@@ -16,7 +16,7 @@ import {eraseInk} from './ink-eraser.js'
 import {openAnnotationInsertDialog,type InsertKind} from './insertion.js'
 import {downloadMediaBlob,exportAnnotatedPDF} from './pdf-export.js'
 import {remapPageAnnotations} from './pdf/page-plan.js'
-import {annotationToolDescriptors,createAnnotationToolbar,type ToolbarOptions,type ToolbarItem,type ToolGroup, type ToolProperty, observeToolbarContainer, annotationStyle} from './toolbar.js'
+import {annotationToolDescriptors,createAnnotationToolbar,type ToolbarOptions,type ToolbarItem,type SidebarItem,type ToolGroup, type ToolProperty, observeToolbarContainer, annotationStyle} from './toolbar.js'
 import {openPDFPageEditor} from './viewer-pages.js'
 import { paintViewerIcon } from './viewer-icons.js'
 import { viewerLocale, type ViewerTranslations } from './viewer-locale.js'
@@ -24,7 +24,7 @@ import { moveAnnotationVertex } from './selection.js'
 import { notePopupPlacement } from './notes.js'
 import { annotationStrokeWidth } from './stroke-width.js'
 import { prepareTextMarkup } from './text-markup.js'
-import { mountViewerNavigation,type ViewerNavigationMode } from './viewer-navigation.js'
+import { mountViewerNavigation } from './viewer-navigation.js'
 import {createViewerZoom,type ViewerZoomOptions} from './pdf/zoom.js'
 import {createPDFPageFlow,type PDFPageScene,type PDFScrollMode} from './pdf/page-flow.js'
 import { createPDFTileSurface } from './pdf/tile-surface.js'
@@ -197,8 +197,9 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
     let requestedAnnotation:string|null=null
     let pdf: IndependentPDFDocument | undefined, image: HTMLImageElement | undefined, pageIndex=0, pageCount=1
     let navigationView:ReturnType<typeof mountViewerNavigation>|undefined
-    let sidebarTool:ViewerNavigationMode|'annotations'='thumbnails'
-    let showNavigation:(mode:ViewerNavigationMode|'annotations',force?:boolean)=>void=()=>{}
+    const sidebarItems=toolbar.getSidebarItems()
+    let sidebarTool:SidebarItem=sidebarItems[0]??'thumbnails'
+    let showNavigation:(mode:SidebarItem,force?:boolean)=>void=()=>{}
     let searchHits:SearchHit[]=[],searchIndex=-1, searchAbort:AbortController|undefined
     let previewRender:AbortController|undefined
     let size={width:1,height:1},scale=1,renderedKey='',renderGeneration=0,frame=0,busy=false,refreshingPDF=false,closed=false,selected: string|null=null
@@ -776,17 +777,14 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
         }
         const sidebarSelect=make('div','fm-split fm-sidebar-select')
         start.prepend(sidebarSelect)
-        const toggle=button('thumbnails',()=>showNavigation(sidebarTool),sidebarSelect)
+        const toggle=button(sidebarTool,()=>showNavigation(sidebarTool),sidebarSelect)
         controls.set('pages',toggle)
-        const selector=toolbar.hasItem('pages')?menuButton('sidebar_tools',()=>[
-            ...(['thumbnails','outline','annotations','bookmarks','signatures'] as const)
-                .filter(key=>key!=='annotations'||toolbar.hasItem('annotations'))
-                .map(key=>({key,checked:sidebarTool===key,action:()=>showNavigation(key,true)})),
-        ],sidebarSelect,'chevron'):undefined
+        const selector=sidebarItems.length>1?menuButton('sidebar_tools',()=>sidebarItems
+            .map(key=>({key,checked:sidebarTool===key,action:()=>showNavigation(key,true)})),sidebarSelect,'chevron'):undefined
         selector?.classList.add('fm-chevron-slot')
-        sidebarSelect.hidden=!toolbar.hasItem('pages')
+        sidebarSelect.hidden=sidebarItems.length===0
         showNavigation=(mode,force=false):void=>{
-            if(!pdf)return
+            if(!pdf||!sidebarItems.includes(mode))return
             const wasOpen=mode==='annotations'?!sidebar.hidden:!navigation.hidden&&navigationView?.mode===mode
             sidebarTool=mode
             paintViewerIcon(toggle,mode);localize(toggle,mode,'aria-label')

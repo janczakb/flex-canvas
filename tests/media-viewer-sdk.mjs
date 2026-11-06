@@ -34,6 +34,12 @@ check(toolbar.activate('ellipse',{toggle:true}).active===null,'Repeated tool act
 assert.throws(()=>toolbar.activate('pin'),TypeError);checks++
 toolbar.dispose();assert.throws(()=>toolbar.getState(),/disposed/);checks++
 assert.throws(()=>createAnnotationToolbar(['pen'],{compactBreakpoint:768,narrowBreakpoint:1070}),RangeError);checks++
+assert.deepEqual(createAnnotationToolbar([],{sidebarItems:['outline','thumbnails','annotations']}).getSidebarItems(),['outline','thumbnails','annotations']);checks++
+assert.deepEqual(createAnnotationToolbar([],{items:['pages'],sidebarItems:['annotations','outline']}).getSidebarItems(),['outline']);checks++
+assert.deepEqual(createAnnotationToolbar([],{sidebarItems:[]}).getSidebarItems(),[]);checks++
+assert.deepEqual(createAnnotationToolbar([],{items:[],sidebarItems:['outline']}).getSidebarItems(),[]);checks++
+assert.throws(()=>createAnnotationToolbar([],{sidebarItems:['outline','outline']}),TypeError);checks++
+assert.throws(()=>createAnnotationToolbar([],{sidebarItems:['unknown']}),TypeError);checks++
 check(defaultNoteIcons.length===10,'Ten default Hugeicons note markers')
 for(const icon of defaultNoteIcons)check(noteMarkerSVG(icon).includes('stroke-width="2"'),'Hugeicons marker stroke is consistent: '+icon)
 const note={id:'note-1',tool:'note',color:'#dc2626',stroke:2,points:[[.5,.5]],text:''}

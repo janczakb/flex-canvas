@@ -401,6 +401,26 @@ Give the container a height and serve the worker and WASM from the same SDK
 build. The viewer creates its own DOM and styles. Set `mode: 'read'` for a
 reader or omit `print` and `download` from the toolbar items to hide those
 actions. Use `saveAnnotations` to persist changes to the annotation layer.
+
+Configure `toolbar.items` for main controls, `toolbar.tools` for creation tools,
+and `toolbar.properties` for their settings. PDF navigation panels have their own
+allowlist. For example, the following shows only thumbnails and outline in the
+sidebar menu and limits creation to notes.
+
+```js
+const toolbar = {
+  items: ['pages', 'pager', 'viewMode', 'zoom', 'zoomMode', 'search'],
+  sidebarItems: ['thumbnails', 'outline'],
+  tools: ['note'],
+  properties: ['color', 'noteIcon'],
+}
+```
+
+Use `sidebarItems: []` to remove the sidebar control. A single panel is opened by
+the control directly. To enable the Annotations panel, include `annotations` in
+both lists. Pass `profile.textMarkupActions` and `pdfOperations` to control the
+selection menu and the PDF editor operations separately.
+
 `replacePdf` receives the candidate PDF, ordered page plan, and remapped
 annotations together. Commit them as one document revision in your storage
 adapter. Set `pdfOperations` to the operations that adapter accepts. The

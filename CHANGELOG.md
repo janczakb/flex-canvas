@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 — 2026-11-06
 
+- Added a configurable PDF sidebar allowlist for thumbnails, outline, annotations,
+  bookmarks and signatures. An empty list hides the control, and a single panel
+  opens directly.
 - Fixed selecting, moving and reopening annotations positioned above selectable
   PDF text, including selecting a text annotation anywhere inside its box.
 - Made browser regression tests independent of downloaded brochure examples.

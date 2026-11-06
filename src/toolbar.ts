@@ -5,11 +5,14 @@ export type ToolProperty = 'color' | 'fill' | 'opacity' | 'stroke' | 'dash' | 'f
 export interface ToolDescriptor {readonly id: AnnotationTool; readonly group: ToolGroup; readonly properties: readonly ToolProperty[]}
 export const annotationToolbarItems = ['pages', 'pager', 'viewMode', 'select', 'pan', 'zoom', 'zoomMode', 'search', 'edit-pages', 'annotations', 'print', 'download', 'undo', 'redo', 'delete'] as const
 export type ToolbarItem = typeof annotationToolbarItems[number]
+export const annotationSidebarItems = ['thumbnails', 'outline', 'annotations', 'bookmarks', 'signatures'] as const
+export type SidebarItem = typeof annotationSidebarItems[number]
 export interface ToolbarOptions {
     readonly compactBreakpoint?: number
     readonly narrowBreakpoint?: number
     readonly rememberTools?: boolean
     readonly items?: readonly ToolbarItem[]
+    readonly sidebarItems?: readonly SidebarItem[]
     readonly tools?: readonly AnnotationTool[] | null
     readonly properties?: readonly ToolProperty[] | null
     /** Optional note/pin palette; every color must also be allowed in the document profile. */
@@ -41,6 +44,9 @@ export function createAnnotationToolbar(enabled: readonly AnnotationTool[], opti
     if (new Set(enabled).size !== enabled.length || enabled.some(id => id !== 'stamp' && !annotationToolDescriptors.some(item => item.id === id))) throw new TypeError('Invalid toolbar tools')
     const items = new Set(options.items ?? annotationToolbarItems)
     if ([...items].some(item => !annotationToolbarItems.includes(item))) throw new TypeError('Invalid viewer controls')
+    const sidebarItems = options.sidebarItems ?? annotationSidebarItems
+    if (new Set(sidebarItems).size !== sidebarItems.length || sidebarItems.some(item => !annotationSidebarItems.includes(item))) throw new TypeError('Invalid viewer sidebar panels')
+    const panels = Object.freeze(sidebarItems.filter(item => items.has('pages') && (item !== 'annotations' || items.has('annotations'))))
     const descriptors = annotationToolDescriptors.filter(item => enabled.includes(item.id) && (options.tools?.includes(item.id) ?? true))
     const memory = new Map<ToolGroup, AnnotationTool>()
     let width = Infinity, expanded = false, active: AnnotationTool | null = null, disposed = false
@@ -69,6 +75,7 @@ export function createAnnotationToolbar(enabled: readonly AnnotationTool[], opti
         },
         selectGroup(group: ToolGroup) {check(); return remembered(group)},
         hasItem(item: ToolbarItem) {check(); return items.has(item)},
+        getSidebarItems() {check(); return panels},
         getTools(group: ToolGroup) {check(); return Object.freeze(members(group))},
         supports(id: AnnotationTool | null, property: ToolProperty) {check(); return (options.properties?.includes(property) ?? true) && (descriptors.find(item => item.id === id)?.properties.includes(property) ?? false)},
         dispose() {disposed = true; memory.clear(); active = null},

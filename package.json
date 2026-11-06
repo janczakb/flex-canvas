@@ -1,6 +1,6 @@
 {
   "name": "@useflex/canvas",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Image and PDF viewing, annotations, signatures and document editing for the web.",
   "exports": {

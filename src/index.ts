@@ -1,7 +1,7 @@
 export * from './types.js'
 export {openCanvas, mountCanvas, canvasAssets, type CanvasOptions} from './canvas-entry.js'
 export {notePopupPlacement} from './notes.js'
-export {createAnnotationToolbar, annotationToolDescriptors, annotationToolbarItems, type ToolbarItem, annotationStyle, observeToolbarContainer, type AnnotationToolbar, type ToolbarOptions, type ToolDescriptor, type ToolGroup, type ToolProperty} from './toolbar.js'
+export {createAnnotationToolbar, annotationToolDescriptors, annotationToolbarItems, annotationSidebarItems, type ToolbarItem, type SidebarItem, annotationStyle, observeToolbarContainer, type AnnotationToolbar, type ToolbarOptions, type ToolDescriptor, type ToolGroup, type ToolProperty} from './toolbar.js'
 export { annotationSDKVersion, annotationTools, createAnnotationProfile, decodeAnnotationDocument, normalizeAnnotations, createAnnotationDocument } from './document.js'
 export { annotationBounds, annotationHandles, paintAnnotation, createAnnotationCanvas } from './canvas.js'
 export { createPDFThumbnails, thumbnailWindow, thumbnailGridWindow, type ThumbnailOptions } from './pdf/thumbnails.js'
