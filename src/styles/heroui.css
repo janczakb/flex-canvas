@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+@source not "../../dist";
+@source not "../../node_modules";

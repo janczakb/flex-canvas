@@ -1,0 +1,2 @@
+// Hugeicons Stroke Rounded, MIT. See licenses/Hugeicons.txt.
+export default "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2\">\n  <path d=\"M5 14L8.5 17.5L19 6.5\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n</svg>"

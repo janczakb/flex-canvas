@@ -1,0 +1,15 @@
+/dist/
+/node_modules/
+*.tgz
+.DS_Store
+/test-results/
+/playwright-report/
+/.cache/
+/.internal/
+.npmrc
+.env
+.env.*
+!.env.example
+AGENTS.md
+**/AGENTS.md
+npm-debug.log*

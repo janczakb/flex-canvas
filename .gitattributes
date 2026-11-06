@@ -1,0 +1,4 @@
+* text=auto
+*.pdf binary
+# Preserve upstream license notices verbatim, including their original whitespace.
+licenses/** -text -whitespace

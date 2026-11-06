@@ -1,0 +1,178 @@
+FLEX CANVAS — SOURCE-AVAILABLE AND COMMERCIAL LICENSE 1.0
+Effective: 6 November 2026
+
+Copyright (c) 2026 Bartłomiej Janczak. All rights reserved.
+Copyright Holder: Bartłomiej Janczak
+Contact: barek122@gmail.com
+
+This is a source-available license, not an open-source license. Public availability
+on npm or a CDN does not grant unrestricted commercial use or redistribution.
+By exercising this License's rights, You agree to these terms. A representative
+accepting for an organization must have authority to bind that organization.
+Mandatory statutory rights prevail over conflicting terms.
+
+1. SOFTWARE AND OFFICIAL DISTRIBUTION
+
+The Software is FLEX Canvas, distributed as @useflex/canvas, including its original
+JavaScript/TypeScript, styles, documentation and modifications. Third-party code,
+fonts, icons and libraries retain their own licenses; see THIRD_PARTY_NOTICES.md
+and licenses/. This License does not restrict independently granted third-party
+rights or grant rights in third-party services or documents.
+
+Official Distribution Channels are the Copyright Holder's official npm package,
+its authorized source repository, and CDNs serving unchanged versions from that
+official npm package, including unpkg and jsDelivr. The Copyright Holder authorizes
+those registries and CDNs to host and deliver the official distribution. Downloading,
+installing or caching an official package is permitted for a use covered below;
+it does not by itself authorize a commercial product or independent SDK business.
+
+"You" means one natural person or legal entity. An incorporated company is distinct
+from its founders, clients, parent, subsidiaries and sister companies. Authorized
+Personnel are employees, contractors and service providers acting solely for Your
+permitted application, subject to obligations protecting the Software. They gain
+no independent right to reuse Your grant for other clients or products.
+
+2. PERMITTED FREE USE
+
+The Copyright Holder grants You a worldwide, non-exclusive, royalty-free,
+non-transferable, non-sublicensable right to install, execute, inspect, configure,
+modify and integrate the Software for:
+
+(a) personal, educational and research use;
+(b) Your own internal operations, including a company's staff applications and
+    incidental customer/supplier portals for its own non-software goods or services;
+(c) private development, testing and evaluation of a prospective commercial product,
+    before production use, paid pilots or live customer operations;
+(d) genuine bespoke work for a specific client's own internal operations, where
+    that client obtains the Software from official channels and independently
+    qualifies for free use. The agency acts as that client's Authorized Personnel.
+
+Internal company use may support a profitable business. A shop, hotel booking form
+or internal CRM does not require a commercial license merely because the business
+earns money. Conversely, a SaaS, monetized software platform, freemium software
+product or software service supplied to third parties is not internal use merely
+because its FLEX Canvas features are behind a staff login or are offered free.
+
+You may keep private modifications, backups, internal package caches, CI artifacts
+and copies necessary to develop and operate the permitted application. These rights
+do not authorize selling reusable products, independent SDK distributions, customer
+source handovers, or distributing Your software product for customer installation.
+
+3. COMMERCIAL USE — INCLUDED WITH PAID FLEX FIELDS LICENSES
+
+3.1 Automatic inclusion. A valid paid FLEX Fields license issued by the Copyright
+Holder automatically includes commercial use of FLEX Canvas at no additional
+FLEX Canvas license charge, within that FLEX Fields license's scope. This includes
+qualifying licenses purchased before this License's effective date. No separate
+Canvas purchase, runtime activation or use of the FLEX Fields package is required.
+FLEX Canvas may be used independently of Laravel, Filament and FLEX Fields.
+
+3.2 Inherited scope. The applicable FLEX Fields license and accepted confirmation
+control the covered licensee/entities, number and identity of products, hosting or
+distribution rights, duration, update entitlement, transfers, refunds and termination.
+For example, a Single Product grant covers that product; an Unlimited Company grant
+covers that licensee's qualifying products; an Enterprise Group grant covers its
+qualifying entities and products. Inclusion does not convert a narrower existing
+grant into unlimited, group, OEM or redistribution rights. Previously issued grants
+retain their agreed terms and are not narrowed or repriced by this document.
+
+3.3 Covered operations. Within that scope You may integrate, modify and operate
+FLEX Canvas in the covered applications, including charging for authorized hosted
+SaaS access. Development, staging, QA, CI, backups and disaster recovery copies of
+covered applications require no extra license. There are no additional Canvas seat,
+CPU, server, user or tenant fees. More products/entities require an appropriate
+underlying grant; unlimited users do not mean unlimited legal entities or products.
+
+3.4 Special distribution. Customer installations, OEM, sublicensing, SDK resale,
+reusable templates, starter kits and other independent distributions require express
+written rights covering that activity. A paid FLEX Fields license includes them
+only if its accepted terms expressly grant them. A client-owned bespoke application
+may instead obtain its own applicable license from the Copyright Holder, with its
+agency acting solely as Authorized Personnel. That is not an agency-wide resale grant.
+
+3.5 Confirmation. Keep the FLEX Fields license confirmation and payment evidence.
+A public package download or a payment unrelated to a valid grant is not evidence
+of commercial rights. A separately agreed written Canvas license may also authorize
+commercial use; its expressly agreed scope prevails for that grant. No separate
+Canvas price or commercial entitlement is implied by a plan name alone.
+
+4. BROWSER DELIVERY, OWNERSHIP AND RESTRICTIONS
+
+4.1 Browser delivery. You may bundle, self-host, publish through Your application's
+CDN and deliver the JavaScript, CSS, WebAssembly, workers and fonts needed to run a
+permitted application, including on another site through its embedded interface.
+Normal browser caching and deployment copies are allowed. Application users may
+interact with that application and receive their documents, exported PDFs, images
+and annotation data. Those outputs are not Software simply because Canvas produced
+them. Delivering the necessary browser runtime does not grant end users independent
+SDK reuse, source redistribution or sublicensing rights.
+
+4.2 Except for these operating permissions, separate platform rights and expressly
+agreed commercial rights, You may not redistribute, sublicense, sell, mirror or
+publish the Software or a derivative SDK as Your own library, download, package,
+component toolkit or reusable developer product. Changing names or shipping compiled
+code does not expand the grant. Publishing a dependency declaration alone does not
+authorize a distribution business whose reusable product requires the Software.
+
+4.3 You may theme the application and need not display a "Powered by FLEX Canvas"
+badge. Preserve copyright, license and third-party notices in permitted copies and
+assets. Do not misrepresent authorship or use the Copyright Holder's branding to
+imply endorsement. Your documents, application data and independently written code
+remain Yours. The Copyright Holder does not claim independently developed software
+containing no protected Software material.
+
+4.4 You may privately inspect, patch and adapt the Software within Your licensed
+scope. Public access does not grant an independent public fork distribution right.
+Service-native viewing/forking separately permitted under the official repository
+platform's accepted terms is not withdrawn. Mandatory rights of study, testing,
+interoperability, backup or lawful transfer remain unaffected.
+
+5. CONTRIBUTIONS
+
+By intentionally submitting code for inclusion, You grant the Copyright Holder a
+perpetual, worldwide, non-exclusive, royalty-free, sublicensable license to use,
+modify and distribute that contribution, including under commercial terms. You
+retain ownership and represent that You have the necessary rights and approvals.
+A contribution does not entitle You to payment, acceptance or a commercial grant.
+
+6. DURATION, BREACH AND EXISTING RIGHTS
+
+A permitted free-use grant continues while its conditions are satisfied. Commercial
+duration and treatment of covered releases follow Section 3. Later public terms do
+not retroactively narrow valid rights already granted for covered versions. This
+License does not promise future releases, public hosting forever, support or an SLA.
+
+For a material breach, the Copyright Holder may terminate the affected grant after
+written notice and thirty days to cure. Deliberate unauthorized redistribution,
+fraud or repeated material breach may justify immediate written termination. No
+cure period authorizes out-of-scope use. Termination affects the breached grant,
+not unrelated compliant grants; inherited commercial rights also cease if their
+underlying FLEX Fields grant is validly terminated or fully refunded. Stop affected
+use and remove its working copies; mandatory archival copies and inaccessible
+backups may follow their lawful retention cycle. Ownership, accrued remedies,
+contribution rights, notices and applicable warranty/liability clauses survive.
+
+7. WARRANTIES AND LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS" AND
+"AS AVAILABLE", WITHOUT IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE OR NON-INFRINGEMENT. THERE IS NO PROMISE OF ERROR-FREE OR
+UNINTERRUPTED OPERATION. YOU ARE RESPONSIBLE FOR EVALUATION, ACCESS CONTROL,
+TESTING, DOCUMENT RIGHTS, PERSISTENCE AND BACKUPS.
+
+To the extent permitted by law, the Copyright Holder is not liable for indirect
+or consequential loss, lost profits, business interruption or lost data. Aggregate
+liability for an affected commercial grant is limited to fees actually paid for
+that grant, including an inherited FLEX Fields grant, without double recovery for
+the same grant across the two packages. For free use, liability is excluded to the
+extent lawful. Nothing excludes intentional wrongdoing, fraud, mandatory statutory
+rights, non-excludable liability, or expressly agreed written commitments.
+
+8. GENERAL
+
+Polish substantive law governs, subject to mandatory protections. Subject to
+mandatory jurisdiction rules, disputes are submitted to competent courts in Warsaw,
+Poland. If a provision is unenforceable, the remaining provisions continue so far
+as legally possible. English is the governing language. COMMERCIAL.md explains
+this License but does not expand or restrict it; an accepted written commercial
+agreement controls its expressly agreed scope and departures from these terms.

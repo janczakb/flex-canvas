@@ -1,0 +1,92 @@
+{
+  "name": "@useflex/canvas",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Image and PDF viewing, annotations, signatures and document editing for the web.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/browser/index.js"
+    },
+    "./pdf-worker": "./dist/pdfium-worker.js",
+    "./pdfium.wasm": "./dist/pdfium.wasm",
+    "./pdf": {
+      "types": "./dist/pdf.d.ts",
+      "import": "./dist/pdf.js"
+    },
+    "./viewer.css": "./dist/browser/viewer.css",
+    "./heroui.css": "./dist/browser/heroui.css",
+    "./properties.css": "./dist/browser/properties.css",
+    "./samples/*": "./dist/samples/*",
+    "./licenses/*": "./licenses/*",
+    "./redaction-font.ttf": "./dist/redaction-regular.ttf",
+    "./print.css": "./dist/browser/print.css",
+    "./cdn": "./dist/flex-canvas.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "COMMERCIAL.md",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node tests/media-viewer-sdk.mjs && node tests/media-viewer-pdfium.mjs && node tests/media-viewer-render-pipeline.mjs && node tests/media-viewer-redactions-native.mjs",
+    "test:browser": "node tests/media-viewer-browser.mjs && node tests/media-viewer-note-interactions.mjs && node tests/media-viewer-pdfium-browser.mjs && node tests/media-viewer-toolbar-feedback.mjs && node tests/media-viewer-signature.mjs && node tests/media-viewer-tool-properties.mjs && node tests/media-viewer-pdf-selection.mjs && node tests/media-viewer-page-flow.mjs && node tests/media-viewer-pdf-layout.mjs && node tests/media-viewer-redactions-browser.mjs && node tests/media-viewer-navigation-editor.mjs && node tests/media-viewer-text-annotations.mjs && node tests/media-viewer-print-insert-navigation.mjs && node tests/media-viewer-spreads-thumbnails.mjs && node tests/media-viewer-resize-stability.mjs",
+    "verify": "npm run build && npm test && npm run test:browser",
+    "demo": "node scripts/serve.mjs",
+    "examples:fetch": "node scripts/fetch-examples.mjs",
+    "test:brochures": "node tests/media-viewer-brochures.mjs",
+    "test:distribution": "node tests/distribution.mjs",
+    "prepublishOnly": "npm run verify && npm run test:distribution"
+  },
+  "dependencies": {
+    "@embedpdf/pdfium": "2.15.1",
+    "@heroui/react": "3.2.7",
+    "@heroui/styles": "3.2.7",
+    "react": "19.2.7",
+    "react-aria": "3.53.1",
+    "react-aria-components": "1.22.1",
+    "react-dom": "19.2.7",
+    "react-stately": "3.51.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/cli": "4.3.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "esbuild": "0.28.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.8.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Bartłomiej Janczak",
+  "homepage": "https://flex-fields.bjanczak.com/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/janczakb/flex-canvas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/janczakb/flex-canvas/issues"
+  },
+  "keywords": [
+    "pdf",
+    "image",
+    "annotations",
+    "pdfium",
+    "viewer",
+    "signature",
+    "document-editor",
+    "typescript",
+    "canvas"
+  ],
+  "module": "./dist/browser/index.js",
+  "types": "./dist/index.d.ts",
+  "unpkg": "./dist/flex-canvas.js",
+  "jsdelivr": "./dist/flex-canvas.js"
+}
