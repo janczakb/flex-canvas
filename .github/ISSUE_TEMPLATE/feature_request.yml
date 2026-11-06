@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a capability or an improvement to an existing workflow.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The workflow or problem
+      description: Explain what you need to accomplish and who benefits.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the expected experience or API. Examples are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and constraints
+      description: Include relevant image/PDF requirements, integration needs or accessibility considerations.

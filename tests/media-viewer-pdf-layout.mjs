@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import {chromium,firefox,webkit} from '@playwright/test'
 import {serveViewerExample} from '../scripts/serve.mjs'
+import {installBrochureFixture} from './fixtures/brochure.mjs'
 const engine=process.env.BROWSER??'chromium',example=await serveViewerExample(),browser=await ({chromium,firefox,webkit}[engine]).launch()
 try{
  const page=await browser.newPage({viewport:{width:1440,height:940}}),errors=[]
  page.setDefaultTimeout(12000);page.on('pageerror',error=>errors.push(error.message))
+ await installBrochureFixture(page,{pages:12,landscape:false})
  await page.goto(example.url)
  await page.getByRole('button',{name:'Open Leela brochure',exact:true}).click()
  await page.waitForFunction(()=>window.exampleViewer?.())

@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import {mkdir} from 'node:fs/promises'
 import {chromium,firefox,webkit} from '@playwright/test'
 import {serveViewerExample} from '../scripts/serve.mjs'
+import {installBrochureFixture} from './fixtures/brochure.mjs'
 const engine=process.env.BROWSER??'chromium',example=await serveViewerExample(),browser=await ({chromium,firefox,webkit}[engine]).launch()
 try{
  const page=await browser.newPage({viewport:{width:1440,height:940}}),errors=[]
  page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message))
+ await installBrochureFixture(page)
  await page.goto(example.url);await page.getByRole('button',{name:'Open Marly brochure',exact:true}).click();await page.waitForFunction(()=>window.exampleViewer?.())
  const root=page.locator('.fm'),button=name=>root.getByRole('button',{name,exact:true})
  assert.equal(await root.locator('.fm-pager').getByText('Page',{exact:true}).count(),0)
@@ -15,7 +17,7 @@ try{
  assert.equal(await search.getByRole('button',{name:'Previous match',exact:true}).isEnabled(),false)
  const centers=await search.locator('.fm-tool').evaluateAll(nodes=>nodes.map(node=>{const a=node.getBoundingClientRect(),b=node.querySelector('svg').getBoundingClientRect();return {x:Math.abs(a.x+a.width/2-b.x-b.width/2),y:Math.abs(a.y+a.height/2-b.y-b.height/2)}}))
  assert(centers.every(center=>center.x<1&&center.y<1),'Search icons must be centered')
- await search.getByRole('searchbox').fill('Marly');await search.getByRole('searchbox').press('Enter')
+ await search.getByRole('searchbox').fill('FLEX');await search.getByRole('searchbox').press('Enter')
  await page.waitForFunction(()=>{const s=window.exampleViewer().element.shadowRoot.querySelector('.fm-search-results');return s.getAttribute('aria-busy')==='false'&&/^1 of [1-9]/.test(s.textContent)})
  await search.getByRole('searchbox').fill('not-present-9483');await search.getByRole('searchbox').press('Enter')
  await page.waitForFunction(()=>{const s=window.exampleViewer().element.shadowRoot.querySelector('.fm-search-results');return s.getAttribute('aria-busy')==='false'&&s.textContent==='0 of 0'})

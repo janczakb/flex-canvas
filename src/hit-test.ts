@@ -10,7 +10,7 @@ export function hitAnnotationGeometry(shape:Annotation,point:Point,width:number,
     if(shape.tool==='text-highlight')return (shape.rectangles??[]).some(([left,top,w,h])=>point[0]>=left&&point[0]<=left+w&&point[1]>=top&&point[1]<=top+h)
     if(shape.tool==='callout'){const [u,v]=vertices[1];if(x>=Math.min(a,u)&&x<=Math.max(a,u)&&y>=Math.min(b,v)&&y<=Math.max(b,v))return true}
     if(['note','pin'].includes(shape.tool))return Math.hypot(x-a,y-b)<=22
-    if(['rectangle','image','link','signature'].includes(shape.tool)){
+    if(['rectangle','image','link','signature'].includes(shape.tool)||shape.tool==='text'&&vertices.length===2){
         const [u,v]=vertices[1]
         return x>=Math.min(a,u)-radius&&x<=Math.max(a,u)+radius&&y>=Math.min(b,v)-radius&&y<=Math.max(b,v)+radius
     }

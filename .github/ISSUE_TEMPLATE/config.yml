@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage questions and integration help
+    url: https://github.com/janczakb/flex-canvas/discussions
+    about: Discuss SDK configuration and integration scenarios.
+  - name: Security policy
+    url: https://github.com/janczakb/flex-canvas/security/policy
+    about: Report vulnerabilities privately using the security contact.
+  - name: Licensing
+    url: https://github.com/janczakb/flex-canvas/blob/main/COMMERCIAL.md
+    about: Free use and commercial coverage through FLEX Fields licenses.

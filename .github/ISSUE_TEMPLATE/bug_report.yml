@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible problem with FLEX Canvas.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: For security vulnerabilities, follow the Security Policy instead of posting exploit details here. Remove secrets and private documents from your reproduction.
+  - type: input
+    id: version
+    attributes:
+      label: FLEX Canvas version
+      description: The installed @useflex/canvas version.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and environment
+      placeholder: Chrome version, operating system, npm or CDN installation
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - PDF viewer or editor
+        - Image annotations
+        - Toolbar or dialogs
+        - Installation, build or CDN
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps and minimal reproduction
+      description: Include the relevant configuration and an owned or shareable sample document when needed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant console output
+      render: text

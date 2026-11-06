@@ -217,6 +217,7 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
     }
     const polygonTools:readonly AnnotationTool[]=['polygon','cloudy-polygon','polyline']
     let gesture: {id:number;shape:Annotation;start:Point;moving?:Annotation;handle?:string} | undefined
+    let interceptTextClick=false
     let pan: {id:number; x:number; y:number; left:number;top:number} | undefined
     let confirmPending: HTMLDialogElement | undefined
     let clipboard:Annotation|undefined
@@ -623,13 +624,24 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
     let unsub=model.subscribe(onModelChange)
     const point=(event:PointerEvent):Point=>{const r=overlay.getBoundingClientRect();return [limit((event.clientX-r.left)/r.width),limit((event.clientY-r.top)/r.height)]}
     scroller.addEventListener('pointerdown',event=>{
-        if(!(event.target instanceof HTMLCanvasElement)||!event.target.classList.contains('fm-page-overlay'))return
+        if(!(event.target instanceof Element))return
+        const fromCanvas=event.target instanceof HTMLCanvasElement&&event.target.classList.contains('fm-page-overlay')
+        const fromText=tool==='select'&&event.target instanceof Element?event.target.closest('.fm-text'):null
+        if(!fromCanvas&&!fromText)return
         const scene=flow?.sceneFor(event.target);if(scene)activateScene(scene)
         if(event.button!==0||gesture||pan||busy)return
         showNotePreview()
         if(tool==='pan'){pan={id:event.pointerId,x:event.clientX,y:event.clientY,left:scroller.scrollLeft,top:scroller.scrollTop};overlay.setPointerCapture(event.pointerId);return}
         if(read)return
         const p=point(event),hit=current().findLast(shape=>hitAnnotationGeometry(shape,p,size.width,size.height,8,scale))
+        if(fromText){
+            interceptTextClick=false
+            if(!hit||hit.tool==='text-highlight')return
+            // An annotation above PDF glyphs owns the gesture; uncovered text
+            // remains available for native selection and the text markup menu.
+            interceptTextClick=true;event.preventDefault();event.stopImmediatePropagation()
+            selectedText()?.removeAllRanges();selectionHighlights.clear();markupMenu.hidden=true
+        }
         if(tool==='select'||(hit&&['note','pin'].includes(tool))){
             const previous=current().find(shape=>shape.id===selected)
             const handle=previous&&annotationHandles(previous).find(([,x,y])=>Math.hypot((p[0]-x)*size.width,(p[1]-y)*size.height)<=9)?.[0]
@@ -1305,6 +1317,7 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
         }else if(!event.target.closest('.fm-markup')){textPointer=undefined;selectedText()?.removeAllRanges();markupMenu.hidden=true}
     },{signal})
     scroller.addEventListener('click',event=>{
+        if(interceptTextClick){interceptTextClick=false;return}
         if(busy||read||tool!=='select'||!(event.target instanceof Element)||!event.target.closest('.fm-text'))return
         const dragged=textPointer?.dragged;textPointer=undefined
         if(dragged||readTextSelection(event.target.closest<HTMLElement>('.fm-text')!,selectedText()).length)return

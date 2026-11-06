@@ -83,6 +83,8 @@ check(!hitAnnotationGeometry({...shape,tool:'ellipse',points:[[.1,.1],[.9,.9]]},
 check(hitAnnotationGeometry(cloud,[.45,.3],1000,1000),'Polygon interior selects the real polygon')
 check(!hitAnnotationGeometry(cloud,[.9,.9],1000,1000),'Outside polygon remains available for drawing')
 check(hitAnnotationGeometry({...line,startCap:'circle'},[.1,.2],1000,1000),'Line ending hit area remains interactive')
+check(hitAnnotationGeometry({...shape,tool:'text',points:[[.1,.1],[.9,.3]],text:'Editable'},[.2,.25],1000,1000),'Text boxes are selectable throughout their body, not only their diagonal')
+check(!hitAnnotationGeometry({...shape,tool:'text',points:[[.1,.1]],text:'Legacy'},[.2,.25],1000,1000),'One-point imported text remains safe during hit testing')
 const ink={id:'ink',tool:'pen',color:'#dc2626',stroke:2,points:[[.1,.5],[.9,.5]]}
 const textHighlight={id:'text-highlight',tool:'text-highlight',color:'#ca8a04',stroke:2,points:[[0,0],[1,1]],rectangles:[[.1,.1,.4,.05],[.1,.2,.2,.05]]}
 const [canonicalHighlight]=normalizeAnnotations([textHighlight])

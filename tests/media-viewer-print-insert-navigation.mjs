@@ -4,10 +4,12 @@ import {createRequire} from 'node:module'
 import {PDFiumDocument} from '../dist/pdf/engine.js'
 import {chromium,firefox,webkit} from '@playwright/test'
 import {serveViewerExample} from '../scripts/serve.mjs'
+import {installBrochureFixture} from './fixtures/brochure.mjs'
 const engine=process.env.BROWSER??'chromium',example=await serveViewerExample(),browser=await ({chromium,firefox,webkit}[engine]).launch()
 try{
  const page=await browser.newPage({viewport:{width:1440,height:940}}),errors=[]
  page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message))
+ await installBrochureFixture(page)
  await page.addInitScript(()=>{
   window.printProof=[]
   window.print=()=>{

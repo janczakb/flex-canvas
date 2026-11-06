@@ -2,9 +2,14 @@
 
 **Image and PDF viewing, annotation and document editing for the web.**
 
+[![CI](https://github.com/janczakb/flex-canvas/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/janczakb/flex-canvas/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@useflex/canvas)](https://www.npmjs.com/package/@useflex/canvas)
+
 [npm](https://www.npmjs.com/package/@useflex/canvas) ·
 [Source](https://github.com/janczakb/flex-canvas) ·
-[Issues](https://github.com/janczakb/flex-canvas/issues)
+[Issues](https://github.com/janczakb/flex-canvas/issues) ·
+[Discussions](https://github.com/janczakb/flex-canvas/discussions) ·
+[Changelog](./CHANGELOG.md)
 
 Add a complete document workspace to your application: review images, mark up PDF
 text, capture signatures and organize pages. Open it in a fullscreen modal or
@@ -688,3 +693,11 @@ are cached locally by `examples:fetch`; these third-party documents are excluded
 from the package. `test:brochures` exercises the cached examples separately.
 `npm pack --dry-run` lists the public distribution. Publication is an explicit
 maintainer operation, never part of the build or verification scripts.
+
+
+## Community
+
+Questions and integration ideas belong in [Discussions](https://github.com/janczakb/flex-canvas/discussions).
+Report reproducible bugs through [Issues](https://github.com/janczakb/flex-canvas/issues).
+See [Contributing](./CONTRIBUTING.md), the [Code of Conduct](./CODE_OF_CONDUCT.md)
+and the [Security Policy](./SECURITY.md) before submitting changes or reports.

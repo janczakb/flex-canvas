@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import {chromium,firefox,webkit} from '@playwright/test'
 import {mkdir} from 'node:fs/promises'
 import {serveViewerExample} from '../scripts/serve.mjs'
+import {installBrochureFixture} from './fixtures/brochure.mjs'
 const engine=process.env.BROWSER??'chromium',example=await serveViewerExample(),browser=await ({chromium,firefox,webkit}[engine]).launch()
 try{
  const page=await browser.newPage({viewport:{width:1700,height:1100}}),errors=[]
  page.setDefaultTimeout(10000);page.on('pageerror',error=>errors.push(error.message))
+ await installBrochureFixture(page)
  page.on('dialog',dialog=>{errors.push('Unexpected browser dialog: '+dialog.type());void dialog.dismiss()})
  await page.goto(example.url)
  for(const document of ['Open image sample','Open Marly brochure']){
@@ -39,7 +41,7 @@ try{
   // Selecting an existing text annotation edits in place and Escape restores its original content.
   const bounds=await root.locator('.fm-page-overlay').last().boundingBox()
   await page.mouse.click(bounds.x+(text.points[0][0]+text.points[1][0])*bounds.width/2,bounds.y+(text.points[0][1]+text.points[1][1])*bounds.height/2)
-  await editor.waitFor();await editor.fill('Discard me');await editor.press('Escape')
+  await editor.waitFor().catch(async error=>{throw new Error('Reopen text failed: '+JSON.stringify({document,bounds,text,after:await shapes(),tool:await root.getAttribute('data-tool')}),{cause:error})});await editor.fill('Discard me');await editor.press('Escape')
   assert.equal((await shapes())[0].text,text.text)
   await choose('Callout');const box=await clickPage(.6,.65)
   await editor.fill('Check the entrance')

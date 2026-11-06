@@ -29,7 +29,11 @@
     "LICENSE",
     "COMMERCIAL.md",
     "THIRD_PARTY_NOTICES.md",
-    "licenses"
+    "licenses",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
