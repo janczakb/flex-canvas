@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 — 2026-11-19
+
+- Added a standalone PDF reader entry with its own stylesheet and host controls.
+- Added bounded random-access PDF loading and progress reporting for document resources.
+- Improved PDF render scheduling, page-handle reuse and cancellation during expensive rendering.
+- Improved continuous page flow, spread thumbnails and viewport stability.
+- Expanded browser coverage for the reader, streaming, host API and search panel.
+
 ## 0.1.1 — 2026-11-06
 
 - Added a configurable PDF sidebar allowlist for thumbnails, outline, annotations,

@@ -35,11 +35,28 @@ try{
   viewport.remove();style.remove()
   return {initial,final,disposed}
  })
+ const zoomCancellation=await page.evaluate(async()=>{
+  const {createPDFPageFlow}=await import('/dist/pdf/page-flow.js'),{createViewerZoom}=await import('/dist/pdf/zoom.js')
+  const viewport=document.createElement('div');viewport.style.cssText='position:fixed;inset:0;width:600px;height:700px;overflow:auto';document.body.append(viewport)
+  const style=document.createElement('style');style.textContent='.fm-flow{position:relative}.fm-flow-page{position:absolute}.fm-flow-page>*{position:absolute;inset:0;width:100%;height:100%}';document.head.append(style)
+  const lifetime=new AbortController(),zoom=createViewerZoom();let slow=false,started=0,cancelled=0
+  const source={pageCount:4,getPageInfo:async pageIndex=>({pageIndex,width:600,height:800,rotation:0}),getPageSizes:async()=>Array.from({length:4},()=>({width:600,height:800})),
+   renderPage:async(index,canvas,{signal})=>{if(slow){started++;await new Promise((resolve,reject)=>{const cancel=()=>{cancelled++;reject(new DOMException('Stale zoom','AbortError'))};signal.addEventListener('abort',cancel,{once:true});const timer=setTimeout(()=>{signal.removeEventListener('abort',cancel);resolve()},40);signal.addEventListener('abort',()=>clearTimeout(timer),{once:true})})}signal.throwIfAborted();canvas.width=canvas.height=8},
+   renderTextLayer:async()=>{},clearTextLayer:()=>{},releasePage:canvas=>{canvas.width=canvas.height=1},renderTile:async(index,tile)=>({width:tile.width,height:tile.height,rgba:new ArrayBuffer(tile.width*tile.height*4)})}
+  const flow=await createPDFPageFlow({document:source,viewport,signal:lifetime.signal,zoom,current:()=>0,pinned:()=>false,activate:()=>{},paint:()=>{},error:error=>{throw error}})
+  await flow.update();slow=true;zoom.set(1.5);const old=flow.update()
+  while(!started)await new Promise(resolve=>setTimeout(resolve,0))
+  zoom.set(2);const current=flow.update();await Promise.all([old,current])
+  const scale=flow.scenes().find(scene=>scene.index===0)?.scale;lifetime.abort();viewport.remove();style.remove()
+  return {cancelled,scale}
+ })
+ assert(zoomCancellation.cancelled>=1,'Changing zoom aborts in-flight old-scale raster work')
+ assert.equal(zoomCancellation.scale,2)
  assert(result.initial.infos<8&&result.initial.renders<8&&result.initial.text<8,'Do not decode 1000 pages on opening')
  assert(result.final.mounted<=8,'Keep a bounded viewport window')
  assert(result.final.rendered<24,'Page jumps must skip intermediate pages')
  assert.equal(result.final.current,999)
  assert.equal(result.disposed,true)
  assert.deepEqual(errors,[])
- console.log(JSON.stringify({pages:1000,...result,note:'Resource-window test; not a cross-product speed benchmark'}))
+ console.log(JSON.stringify({pages:1000,...result,zoomCancellation,note:'Resource-window test; not a cross-product speed benchmark'}))
 }finally{await browser.close();await example.close()}

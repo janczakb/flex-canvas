@@ -1,20 +1,30 @@
+import {createRandomAccessSource} from './random-access.js'
 import { PDFiumDocument } from './engine.js'
-import type { PDFRequest, PDFResponse } from './protocol.js'
+import type { PDFRequest, PDFResponse, PDFSourceProgress } from './protocol.js'
 
-const scope = globalThis as unknown as {onmessage: ((event: MessageEvent<PDFRequest>) => void) | null; postMessage(message: PDFResponse, transfer?: Transferable[]): void}
+const scope = globalThis as unknown as {onmessage: ((event: MessageEvent<PDFRequest>) => void) | null; postMessage(message: PDFResponse|PDFSourceProgress, transfer?: Transferable[]): void}
 let document: PDFiumDocument | undefined, queue = Promise.resolve(), pending = 0, maxPages = 0
+let activeRequest:number|undefined
+const cancelled=new Set<number>()
 let runtime: {url:string; api:ReturnType<typeof PDFiumDocument.prepare>}|undefined
 scope.onmessage = ({data}) => {
     if (!data || !Number.isSafeInteger(data.id)) return
+    if(data.method==='cancel'){if(data.input.requestId===activeRequest)cancelled.add(data.input.requestId);return}
     if (++pending > 32) { pending--; scope.postMessage({id: data.id, ok: false, code: 'pdf_queue_limit'}); return }
     queue = queue.then(async () => {
         try {
+            activeRequest=data.id
             let value: unknown
             if (data.method === 'prepare') {
                 if (document || typeof data.input.wasmUrl !== 'string') throw new Error('Invalid PDF runtime')
                 if (runtime?.url !== data.input.wasmUrl) runtime={url:data.input.wasmUrl,api:PDFiumDocument.prepare(data.input.wasmUrl)}
                 await runtime.api
-                value=true
+                value={bitmap:typeof createImageBitmap==='function'}
+            } else if(data.method==='openSource'){
+                if(document||typeof data.input.wasmUrl!=='string'||typeof data.input.password!=='string'||data.input.password.length>1024||!Number.isSafeInteger(data.input.maxPages)||data.input.maxPages<1||data.input.maxPages>10000)throw new Error('Invalid PDF input')
+                const source=createRandomAccessSource(data.input.source,(loaded,total)=>scope.postMessage({event:'source-progress',loaded,total}))
+                document=await PDFiumDocument.openSource(source,data.input.wasmUrl,data.input.password,data.input.maxPages,runtime?.url===data.input.wasmUrl?runtime.api:undefined)
+                maxPages=data.input.maxPages;value={pageCount:document.pageCount,canEditPages:document.canEditPages}
             } else if (data.method === 'open') {
                 if (document) throw new Error('Document already open')
                 const input = data.input
@@ -28,8 +38,10 @@ scope.onmessage = ({data}) => {
                     case 'sizes': value = document.pageSizes(); break
                     case 'info': value = document.info(data.input.index); break
                     case 'text': value = document.text(data.input.index, data.input.geometry); break
-                    case 'render': value = document.render(data.input.index, data.input.width, data.input.height); break
-                    case 'renderTile': value = document.renderTile(data.input.index, data.input.tile); break
+                    case 'renderBitmap': value=await document.renderScheduled(data.input.index,{x:0,y:0,width:data.input.width,height:data.input.height,pageWidth:data.input.width,pageHeight:data.input.height},()=>cancelled.has(data.id),false,true);break
+                    case 'renderTileBitmap':value=await document.renderScheduled(data.input.index,data.input.tile,()=>cancelled.has(data.id),true,true);break
+                    case 'render': value = await document.renderScheduled(data.input.index,{x:0,y:0,width:data.input.width,height:data.input.height,pageWidth:data.input.width,pageHeight:data.input.height},()=>cancelled.has(data.id),false); break
+                    case 'renderTile': value = await document.renderScheduled(data.input.index,data.input.tile,()=>cancelled.has(data.id)); break
                     case 'search': value = document.search(data.input.index, data.input.query, data.input.matchCase, data.input.wholeWord, data.input.limit); break
                     case 'outline': value = document.outline(); break
                     case 'metadata': value = document.metadata(); break
@@ -56,12 +68,13 @@ scope.onmessage = ({data}) => {
                     default: throw new Error('Unsupported PDF command')
                 }
             }
-            const transfer = data.method === 'render' || data.method === 'renderTile' || data.method === 'previewText' ? [(value as {rgba: ArrayBuffer}).rgba] : ['editPages','bytes','exportPDF','redact','crop','editText'].includes(data.method) ? [value as ArrayBuffer] : []
+            document?.assertSource()
+            const transfer = data.method==='renderBitmap'||data.method==='renderTileBitmap'?[(value as {bitmap:ImageBitmap}).bitmap]:data.method === 'render' || data.method === 'renderTile' || data.method === 'previewText' ? [(value as {rgba: ArrayBuffer}).rgba] : ['editPages','bytes','exportPDF','redact','crop','editText'].includes(data.method) ? [value as ArrayBuffer] : []
             scope.postMessage({id: data.id, ok: true, value}, transfer)
         } catch (error) {
             // Never send source bytes, URLs, passwords or native engine diagnostics to the UI.
             const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'pdf_operation_failed'
             scope.postMessage({id: data.id, ok: false, code})
-        } finally { pending-- }
+        } finally { cancelled.delete(data.id);activeRequest=undefined;pending-- }
     })
 }

@@ -210,8 +210,28 @@ that worker. The adapter exposes page geometry, selectable text geometry, search
 metadata, bookmarks and sanitized HTTP(S)/mailto links. It bounds input bytes,
 page count, queued work, operation duration and raster pixels. Stale render
 results cannot paint over a newer page, and closing terminates the worker.
-It currently downloads the bounded document before opening; range streaming is
-not implemented. The read-only view is not semantic text reflow.
+`loading:'auto'` opens Blob/File sources through worker-only FileReaderSync and
+PDFium's custom document callback. HTTP sources first probe Range support and a
+strong ETag, then read 256 KiB blocks into a 16 MiB LRU; every response must match
+Content-Range and the original ETag. Changed versions fail closed. Missing stable
+range delivery falls back to a bounded full download; `loading:'range'` requires
+range support. The default input limit remains 100 MiB; integrators may explicitly
+raise `maxBytes` to 2,147,483,647 for random-access sources. Full-byte exports and
+editing still have a 100 MiB materialization budget. A large sparse-file test is
+not proof of performance on a large image/CAD document.
+
+The request scheduler keeps ordinary commands ordered and prioritizes the newest
+visible raster. Obsolete viewport work is removed before worker submission;
+zoom/navigation invalidation also aborts in-flight old-scale previews. Independent
+still-valid pages are not discarded just because another page becomes visible.
+
+Worker raster requests use PDFium's progressive Start/Continue/Close API, yield
+between slices and accept cancellation while rendering. PDFium decides where it
+can pause; parsing and individual native operations can still take longer than a
+slice budget. Supported browsers transfer ImageBitmap ownership by default;
+`rasterTransport:'rgba'` retains the transferable ArrayBuffer fallback. Bitmap
+cache eviction closes GPU resources. This avoids the JS channel-swap loop; it is
+not a guarantee of zero copies, GPU residency or sub-millisecond transfer. The read-only view is not semantic text reflow.
 
 `createPDFThumbnails` uses visibility-based, single-flight thumbnail rendering.
 `thumbnailWindow` supplies a bounded DOM window for long documents. The host
@@ -615,7 +635,16 @@ Continuous mode keeps a bounded window of page surfaces near the viewport.
 Page dimensions are read in one worker operation before layout, without rasterizing
 every page. Visible pages render first; page previews and detailed tiles share the PDFium
 worker. Tile raster caching is bounded to 24 MiB across the page window.
-Scrolling away releases page canvases and text layers. This controls decoded
+Scrolling away releases page canvases and text layers, including queued glyph
+extraction. Overscan pages retain a cheap preview without allocating selectable
+glyph DOM until they enter the viewport. Text preparation waits 180 ms after
+scrolling, selects at most two visible pages and yields during large DOM builds. Visible pages are selected before the
+mount budget is applied. Parsed native PDFium page handles use a four-page LRU,
+so adjacent tiles reuse page resources; eviction and document destruction close
+the retained handles. Page-info requests for the same page share one pending
+worker operation. A trustworthy uncompressed Content-Length lets the download
+stream fill its final buffer directly rather than retaining all chunks plus a
+second full-size concatenation buffer. This controls decoded
 page resources; it does not turn source download into incremental PDF loading.
 
 In Select mode, drag over actual PDF text to open the inline toolbar: highlight,
@@ -721,3 +750,49 @@ Questions and integration ideas belong in [Discussions](https://github.com/jancz
 Report reproducible bugs through [Issues](https://github.com/janczakb/flex-canvas/issues).
 See [Contributing](./CONTRIBUTING.md), the [Code of Conduct](./CODE_OF_CONDUCT.md)
 and the [Security Policy](./SECURITY.md) before submitting changes or reports.
+
+
+## Application-owned PDF controls
+
+The package exposes `@useflex/canvas/reader` plus `@useflex/canvas/reader.css` for
+an embedded reader with no built-in toolbar. Its viewport must have a height.
+Worker/WASM URLs must be self-hosted. `mountPDFReader(container, options)` returns:
+
+- `setPage(zeroBasedIndex)`, `setZoom(number | 'fit-page' | 'fit-width')`, `getState()`;
+- `search(query, {matchCase, wholeWord, limit, signal})`, `getSearchState()`,
+  `selectSearchResult(zeroBasedIndex)`, `nextSearchResult(1 | -1)`;
+- `print({title, assetBaseUrl, onProgress, ...printBudgets})` and `destroy()`.
+
+`onChange` reports current page/count/effective scale; `onSearchChange` reports
+current match/count/scanned pages/pending/limit. New searches cancel old ones;
+results are bounded to 1000. Search paints rectangles without reopening the PDF.
+Print renders all pages sequentially under explicit budgets and reports progress;
+no bundled progress dialog is required by the reader. Serve print.css through
+its assetBaseUrl. Closing cancels work and releases the worker.
+
+`onProgress` reports stages engine/download/opening/render/ready. `source-read`
+reports unique blocks read, not a promise that every byte will be downloaded.
+`total:null` means indeterminate. Render events include pageIndex and report page
+preview readiness; detailed tile refinement and text preparation may follow.
+Applications should interpret each stage separately rather than displaying an
+invented global percentage. Full viewer also supports `showToolbar:false`,
+`onProgress`, `onViewportChange`, `search()`, `nextSearchResult()` and `print()`.
+
+```ts
+import {mountPDFReader} from '@useflex/canvas/reader'
+import '@useflex/canvas/reader.css'
+
+const reader = await mountPDFReader(document.querySelector('#pdf')!, {
+  source: file, // Blob/File or URL
+  workerUrl: '/canvas/pdfium-worker.js',
+  wasmUrl: '/canvas/pdfium.wasm',
+  onProgress: progress => updateLoader(progress),
+  onChange: viewport => updatePageAndZoom(viewport),
+  onSearchChange: result => updateSearchCount(result),
+})
+await reader.search('invoice')
+await reader.nextSearchResult(1)
+await reader.print({assetBaseUrl: '/canvas/', onProgress: updatePrintProgress})
+// On modal close:
+reader.destroy()
+```

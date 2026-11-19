@@ -10,7 +10,7 @@ export interface DocumentAdapter {
     releasePage(canvas: HTMLCanvasElement): void
     destroy(): Promise<void> | void
 }
-export type MediaSource = { kind: 'image'; url: string } | { kind: 'pdf'; source: string | Uint8Array; pdf: Omit<PDFOptions, 'source' | 'signal'> }
+export type MediaSource = { kind: 'image'; url: string } | { kind: 'pdf'; source: string | Uint8Array | Blob; pdf: Omit<PDFOptions, 'source' | 'signal'> }
 export interface LayerSnapshot { readonly data: string; readonly revision: number }
 export interface LayerStorage {
     load(signal: AbortSignal): Promise<LayerSnapshot>

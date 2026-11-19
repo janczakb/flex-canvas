@@ -68,9 +68,6 @@
 @media(max-width:460px){.fm-top-skeleton span:nth-child(n+7){display:none}}
 @media(prefers-reduced-motion:reduce){.fm-top-skeleton span{animation:none}}
 
-.fm-search{position:absolute;inset-inline-end:4px;top:52px;z-index:4;display:flex;align-items:center;gap:7px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);box-shadow:0 5px 15px #0002;max-width:calc(100% - 26px)}
-.fm-search input{min-width:50px;max-width:40vw;padding:6px;border:1px solid var(--border);background:var(--toolbar);border-radius:4px}
-.fm-search button{display:grid;place-items:center;padding:4px}.fm-search svg{width:18px;height:18px}.fm-search span{white-space:nowrap}
 .fm-navigation-list button:not(.fm-thumbnail){display:block;margin-block-end:4px;max-width:100%;text-align:start}
 .fm-thumbnail{box-sizing:border-box;display:grid;place-items:center;gap:4px;width:100%;height:182px;border-radius:0!important}
 .fm-thumbnail canvas{max-height:144px;max-width:120px;background:white}
@@ -348,7 +345,23 @@
 
 @media print{:host{display:none!important}.fm-fullscreen,.fm-fullscreen::backdrop{display:none!important}}
 
-.fm .fm-search .fm-tool:not([data-slot]){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:6px;margin:0;border:0;line-height:1;background:transparent}
-.fm .fm-search .fm-tool svg{display:block;flex:none;width:20px;height:20px;margin:0}
-.fm-search>.fm-search-results{display:inline-block;flex:none;min-width:48px;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}
-.fm-search>.fm-hero-input{flex:1;min-width:60px}.fm-search .fm-hero-input input{width:100%;max-width:none}
+
+/* Same HeroUI composition and outer geometry as Studio DocumentFind. */
+.fm-search{position:absolute;z-index:8;top:0;right:0;width:min(420px,100%);box-sizing:border-box;}
+.fm-search[hidden]{display:none;}
+.fm-document-find{display:flex;align-items:center;gap:4px;min-height:50px;padding:6px;background:var(--surface);border-bottom:1px solid #eceef0;border-left:1px solid #eceef0;border-radius:0 0 0 4px;box-sizing:border-box;}
+.fm-document-find-field{min-width:0;flex:1;}
+.fm-document-find-field [data-slot=input-group-prefix] .fm-hero-icon,.fm-document-find-field [data-slot=input-group-prefix] svg{display:block;width:20px;height:20px;flex:none;}
+.fm-document-find .fm-search-results{flex:none;white-space:nowrap;font-size:14px;font-variant-numeric:tabular-nums;color:var(--ink);}
+.fm .fm-document-find .fm-document-find-navigation{display:inline-flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;min-width:34px;min-height:34px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--ink);box-shadow:none;}
+.fm .fm-document-find .fm-document-find-navigation:hover:not(:disabled),.fm .fm-document-find .fm-document-find-navigation[data-hovered]:not(:disabled){background:rgb(0 0 0 / .1);box-shadow:none;}
+.fm .fm-document-find .fm-document-find-navigation svg{display:block;flex:none;width:24px;height:24px;margin:0;}
+
+/* The clear control sits in InputGroup.Suffix, which already owns the end gutter. */
+.fm-document-find [data-slot="search-field-clear-button"]{margin-inline:0;}
+.fm-document-find [data-slot="input-group-suffix"]:has([data-slot="search-field-clear-button"]){padding-inline-end:8px;}
+
+.fm-document-find [data-slot="input-group-suffix"]{gap:6px;}
+.fm-document-find [data-slot="search-field-clear-button"]{margin-inline:0;background:#d9dadd;color:#25252c;box-shadow:none;}
+.fm-document-find [data-slot="search-field-clear-button"]:hover{background:#c5c7cb;}
+.fm-document-find [data-slot="input-group-suffix"]:has([data-slot="search-field-clear-button"]){padding-inline-end:8px;}

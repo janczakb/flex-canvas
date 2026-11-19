@@ -8,14 +8,19 @@ import { validatePagePlan, type PDFPageEdit } from './pdf/page-plan.js'
 export type { PDFPageEdit } from './pdf/page-plan.js'
 import {pdfSelectionLines} from './pdf/text-lines.js'
 import { PDFEngineError, type PageInfo, type PageRender, type PDFRenderPriority, type RenderOptions } from './pdf/types.js'
+import {probePDFRange,type PDFSourceDescriptor} from './pdf/random-access.js'
 import { integerLimit, readBoundedBytes } from './pdf/source.js'
-import type { OutlineItem, PageText, PDFLink, PDFMetadata, PDFPageOverlay, PDFMethod, PDFMethods, PDFResponse, PDFTile, Raster, SearchHit } from './pdf/protocol.js'
+import type { OutlineItem, PageText, PDFLink, PDFMetadata, PDFPageOverlay, PDFMethod, PDFMethods, PDFResponse, PDFSourceProgress, PDFTile, BitmapRaster, Raster, SearchHit } from './pdf/protocol.js'
 export { PDFEngineError } from './pdf/types.js'
 export type { PageInfo, PageRender, RenderOptions } from './pdf/types.js'
 export type { OutlineItem, PageText, PDFLink, PDFMetadata, PDFTile, SearchHit } from './pdf/protocol.js'
 
+export interface PDFProgress {phase:'source-read'|'download'|'engine'|'opening'|'render'|'ready';loaded:number;total:number|null;pageIndex?:number}
 export interface PDFOptions {
-    source: string | Uint8Array
+    onProgress?:(progress:PDFProgress)=>void
+    source: string | Uint8Array | Blob
+    rasterTransport?:'auto'|'rgba'|'bitmap'
+    loading?:'auto'|'memory'|'range'
     workerUrl: string
     wasmUrl: string
     /** Self-hosted Unicode overlay font; fetched only when applying labeled redactions. */
@@ -26,6 +31,8 @@ export interface PDFOptions {
     maxCanvasPixels?: number
     maxQueuedPages?: number
     operationTimeoutMs?: number
+    /** Total download + engine opening deadline, including a stalled HTTP stream. */
+    openTimeoutMs?: number
     headers?: Record<string, string>
     withCredentials?: boolean
     signal?: AbortSignal
@@ -50,8 +57,9 @@ export interface IndependentPDFDocument {
     getMetadata(): Promise<PDFMetadata>
     getLinks(index: number): Promise<PDFLink[]>
     renderPage(index: number, canvas: HTMLCanvasElement, options?: RenderOptions): Promise<PageRender>
+    renderTileBitmap?(index:number,tile:PDFTile,signal?:AbortSignal,priority?:PDFRenderPriority):Promise<BitmapRaster>
     renderTile(index: number, tile: PDFTile, signal?: AbortSignal, priority?: PDFRenderPriority): Promise<Raster>
-    renderTextLayer(index: number, container: HTMLElement, scale?: number): Promise<void>
+    renderTextLayer(index: number, container: HTMLElement, scale?: number, signal?: AbortSignal, priority?: PDFRenderPriority): Promise<void>
     clearTextLayer(container: HTMLElement): void
     releasePage(canvas: HTMLCanvasElement): void
     destroy(): Promise<void>
@@ -61,28 +69,35 @@ const aborted = (): DOMException => new DOMException('PDF operation cancelled', 
 
 /** Engine resources are explicit, self-hosted and fetched only when a PDF is opened. */
 export async function openPDF(options: PDFOptions): Promise<IndependentPDFDocument> {
+    if(options.loading!==undefined&&!['auto','memory','range'].includes(options.loading))throw new RangeError('Invalid PDF loading mode')
+    if(options.rasterTransport!==undefined&&!['auto','rgba','bitmap'].includes(options.rasterTransport))throw new RangeError('Invalid PDF raster transport')
     if (options.signal?.aborted) throw aborted()
-    const maxPages = integerLimit(options.maxPages, 2000, 1, 10000), maxBytes = integerLimit(options.maxBytes, 104857600, 1, 104857600)
+    const maxPages = integerLimit(options.maxPages, 2000, 1, 10000), maxBytes = integerLimit(options.maxBytes, 104857600, 1, 2147483647)
     const maxPixels = integerLimit(options.maxCanvasPixels, 4194304, 1024, 16777216), maxQueue = integerLimit(options.maxQueuedPages, 16, 1, 32)
     const timeout = integerLimit(options.operationTimeoutMs, 30000, 1000, 120000)
+    const openingTimeout=integerLimit(options.openTimeoutMs,60000,1000,120000)
     if (!options.workerUrl || !options.wasmUrl) throw new PDFEngineError('pdf_resources_missing', 'PDF worker and WebAssembly URLs are required.')
     const lifecycle = new AbortController(), parentAbort = (): void => lifecycle.abort()
     options.signal?.addEventListener('abort', parentAbort, {once: true})
     let worker: Worker | undefined, bootstrapUrl: string | undefined, closed = false, sequence = 0
+    let openingTimer:ReturnType<typeof setTimeout>|undefined
     const releaseBootstrap = (): void => { if (bootstrapUrl) { URL.revokeObjectURL(bootstrapUrl); bootstrapUrl = undefined } }
-    type Pending = {resolve(value: unknown): void; reject(error: unknown): void; cleanup(): void; start(): void; priority: PDFRenderPriority}
+    type Pending = {resolve(value: unknown): void; reject(error: unknown): void; cleanup(): void; start(): void; priority: PDFRenderPriority;visual:boolean;cancelled?:boolean}
+    let useBitmaps=false
     let active:number|undefined
     const requests = new Map<number, Pending>(), renders = new WeakMap<HTMLCanvasElement, number>(), textLayers = new Map<HTMLElement, object>()
     const infos = new Map<number, PageInfo>()
+    const pendingInfos = new Map<number, Promise<PageInfo>>()
     const terminate = (error: Error): void => {
         if (closed) return
         closed = true
+        clearTimeout(openingTimer)
         releaseBootstrap()
         if (worker) { worker.onmessage = worker.onerror = worker.onmessageerror = null; worker.terminate(); worker = undefined }
         options.signal?.removeEventListener('abort', parentAbort)
         lifecycle.signal.removeEventListener('abort', onAbort); lifecycle.abort()
         for (const pending of requests.values()) { pending.cleanup(); pending.reject(error) }
-        requests.clear(); infos.clear()
+        requests.clear(); infos.clear(); pendingInfos.clear()
         for (const container of textLayers.keys()) container.replaceChildren()
         textLayers.clear()
     }
@@ -91,11 +106,15 @@ export async function openPDF(options: PDFOptions): Promise<IndependentPDFDocume
     const assert = (): void => { if (closed || lifecycle.signal.aborted) throw aborted() }
     const pump = ():void => {
         if(active!==undefined||closed)return
-        let next:[number,Pending]|undefined
+        let command:[number,Pending]|undefined,visible:[number,Pending]|undefined,background:[number,Pending]|undefined
         for(const entry of requests){
-            next??=entry
-            if(entry[1].priority==='foreground'){next=entry;break}
+            if(entry[1].cancelled)continue
+            if(entry[1].priority==='foreground'){
+                if(entry[1].visual)visible=entry // Latest visible raster wins within its priority.
+                else command??=entry // Preserve order of reads, edits and exports.
+            }else if(!background||entry[1].visual)background=entry
         }
+        const next=command??visible??background
         if(next){active=next[0];next[1].start()}
     }
     const call = <K extends PDFMethod>(method: K, input: PDFMethods[K]['input'], signal?: AbortSignal, transfer: Transferable[] = [], priority: PDFRenderPriority='foreground'): Promise<PDFMethods[K]['output']> => {
@@ -106,7 +125,9 @@ export async function openPDF(options: PDFOptions): Promise<IndependentPDFDocume
             const id=++sequence
             let timer:ReturnType<typeof setTimeout>|undefined
             const cancel=():void=>{
+                const pending=requests.get(id);if(pending)pending.cancelled=true
                 reject(aborted())
+                if(active===id)worker?.postMessage({id:++sequence,method:'cancel',input:{requestId:id}})
                 if(active!==id){requests.delete(id);cleanup()}
             }
             const cleanup=():void=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel)}
@@ -115,11 +136,12 @@ export async function openPDF(options: PDFOptions): Promise<IndependentPDFDocume
                 try {worker!.postMessage({id,method,input},transfer)}
                 catch(error){requests.delete(id);active=undefined;cleanup();reject(error);pump()}
             }
-            requests.set(id,{priority,start,resolve:value=>resolve(value as PDFMethods[K]['output']),reject,cleanup})
+            requests.set(id,{priority,visual:['render','renderBitmap','renderTile','renderTileBitmap'].includes(method),start,resolve:value=>resolve(value as PDFMethods[K]['output']),reject,cleanup})
             signal?.addEventListener('abort',cancel,{once:true})
             pump()
         })
     }
+    openingTimer=setTimeout(()=>terminate(new PDFEngineError('pdf_open_timeout','PDF opening exceeded its time budget.')),openingTimeout)
     try {
         const workerUrl = globalThis.location ? new URL(options.workerUrl, globalThis.location.href) : undefined
         // A module worker entry must be same-origin. The small owned bootstrap
@@ -128,42 +150,63 @@ export async function openPDF(options: PDFOptions): Promise<IndependentPDFDocume
             bootstrapUrl = URL.createObjectURL(new Blob(['import ' + JSON.stringify(workerUrl.href) + ';'], {type: 'text/javascript'}))
         }
         worker = new Worker(bootstrapUrl ?? workerUrl?.href ?? options.workerUrl, {type: 'module', name: 'flex-pdfium'})
-        worker.onmessage = ({data}: MessageEvent<PDFResponse>): void => {
+        worker.onmessage = ({data}: MessageEvent<PDFResponse|PDFSourceProgress>): void => {
+            if('event' in data){options.onProgress?.({phase:'source-read',loaded:data.loaded,total:data.total});return}
             releaseBootstrap()
             const pending = requests.get(data?.id)
-            if (!pending) return
+            if (!pending){if(data?.ok&&data.value&&typeof data.value==='object'&&'bitmap' in data.value)(data.value as BitmapRaster).bitmap.close();return}
             requests.delete(data.id); active=undefined; pending.cleanup()
-            if (data.ok) pending.resolve(data.value)
+            if (data.ok){if(pending.cancelled&&data.value&&typeof data.value==='object'&&'bitmap' in data.value)(data.value as BitmapRaster).bitmap.close();pending.resolve(data.value)}
             else pending.reject(new PDFEngineError(data.code, 'The PDF operation could not be completed.'))
             queueMicrotask(pump)
         }
         worker.onerror = event => { event.preventDefault(); terminate(new PDFEngineError('pdf_worker_failed', 'The PDF worker could not start.')) }
         worker.onmessageerror = () => terminate(new PDFEngineError('pdf_worker_failed', 'The PDF worker returned an invalid response.'))
-        const preparation=call('prepare',{wasmUrl:options.wasmUrl})
-        const source=(async()=>{
-            let bytes: Uint8Array
-            if (typeof options.source === 'string') bytes = await readBoundedBytes(options.source, maxBytes, {signal: lifecycle.signal, headers: options.headers, credentials: options.withCredentials ? 'include' : 'same-origin'})
-            else {
-                if (!(options.source instanceof Uint8Array) || options.source.byteLength > maxBytes) throw new PDFEngineError('pdf_size_limit', 'PDF source exceeds the byte limit.')
-                bytes = options.source.slice()
+        options.onProgress?.({phase:'engine',loaded:0,total:1})
+        const preparation=call('prepare',{wasmUrl:options.wasmUrl}).then(capabilities=>{useBitmaps=capabilities!==true&&capabilities.bitmap&&options.rasterTransport!=='rgba';if(options.rasterTransport==='bitmap'&&!useBitmaps)throw new PDFEngineError('pdf_bitmap_unavailable','ImageBitmap transport is unavailable.');options.onProgress?.({phase:'engine',loaded:1,total:1})})
+        const source=(async():Promise<Uint8Array|PDFSourceDescriptor>=>{
+            if(options.source instanceof Blob){
+                if(options.source.size>maxBytes)throw new PDFEngineError('pdf_size_limit','PDF source exceeds the byte limit.')
+                if(options.loading!=='memory')return {kind:'blob',blob:options.source}
+                if(options.source.size>104857600)throw new PDFEngineError('pdf_size_limit','In-memory PDF source exceeds the memory limit.')
+                return new Uint8Array(await options.source.arrayBuffer())
             }
-            assert()
-            if (bytes.length < 5) throw new PDFEngineError('pdf_invalid', 'PDF source is empty or incomplete.')
+            if(typeof options.source==='string'&&options.loading!=='memory'){
+                const ranged=await probePDFRange(options.source,maxBytes,{headers:options.headers,withCredentials:options.withCredentials,signal:lifecycle.signal})
+                if(ranged)return ranged
+                if(options.loading==='range')throw new PDFEngineError('pdf_range_unavailable','Verified range delivery is unavailable.')
+            }
+            let bytes:Uint8Array
+            if(typeof options.source==='string')bytes=await readBoundedBytes(options.source,Math.min(maxBytes,104857600),{signal:lifecycle.signal,headers:options.headers,credentials:options.withCredentials?'include':'same-origin'},(loaded,total)=>options.onProgress?.({phase:'download',loaded,total}))
+            else{
+                if(!(options.source instanceof Uint8Array)||options.source.byteLength>Math.min(maxBytes,104857600))throw new PDFEngineError('pdf_size_limit','PDF source exceeds the in-memory limit.')
+                bytes=options.source.slice()
+            }
+            assert();if(bytes.length<5)throw new PDFEngineError('pdf_invalid','PDF source is empty or incomplete.')
             return bytes
         })()
-        const [,bytes]=await Promise.all([preparation,source])
-        const buffer = bytes.buffer as ArrayBuffer
-        const {pageCount, canEditPages} = await call('open', {bytes: buffer, wasmUrl: options.wasmUrl, password: options.password ?? '', maxPages}, undefined, [buffer])
+        const [,input]=await Promise.all([preparation,source]);assert()
+        options.onProgress?.({phase:'opening',loaded:0,total:1})
+        const common={wasmUrl:options.wasmUrl,password:options.password??'',maxPages}
+        const {pageCount,canEditPages}=input instanceof Uint8Array
+            ?await call('open',{...common,bytes:input.buffer as ArrayBuffer},undefined,[input.buffer as ArrayBuffer])
+            :await call('openSource',{...common,source:input})
+        clearTimeout(openingTimer)
+        options.onProgress?.({phase:'opening',loaded:1,total:1})
         const page = (index: number): void => { assert(); if (!Number.isSafeInteger(index) || index < 0 || index >= pageCount) throw new RangeError('Invalid PDF page index') }
-        const info = async (index: number): Promise<PageInfo> => {
+        const info = (index: number): Promise<PageInfo> => {
             page(index)
-            if (!infos.has(index)) {
-                const result = await call('info', {index}); assert()
+            const cached=infos.get(index)
+            if(cached){infos.delete(index);infos.set(index,cached);return Promise.resolve(cached)}
+            const pending=pendingInfos.get(index)
+            if(pending)return pending
+            const request=call('info',{index}).then(result=>{
+                assert()
                 if (!(result.width > 0 && result.height > 0) || !Number.isFinite(result.width * result.height)) throw new PDFEngineError('pdf_page_invalid', 'Invalid PDF page dimensions.')
-                if (infos.size >= 128) infos.delete(infos.keys().next().value!)
-                infos.set(index, Object.freeze(result))
-            }
-            return infos.get(index)!
+                if(infos.size>=128)infos.delete(infos.keys().next().value!)
+                const value=Object.freeze(result);infos.set(index,value);return value
+            }).finally(()=>pendingInfos.delete(index))
+            pendingInfos.set(index,request);return request
         }
         const clearTextLayer = (container: HTMLElement): void => { textLayers.delete(container); container.replaceChildren() }
         return Object.freeze({
@@ -215,24 +258,31 @@ export async function openPDF(options: PDFOptions): Promise<IndependentPDFDocume
                 assert(); if (signal?.aborted || renders.get(canvas) !== generation) throw aborted()
                 const ratio = Math.min(pixelRatio, 8192 / width, 8192 / height, Math.sqrt(maxPixels / (width * height)))
                 const pixelWidth = Math.max(1, Math.floor(width * ratio)), pixelHeight = Math.max(1, Math.floor(height * ratio))
-                const raster = await call('render', {index, width: pixelWidth, height: pixelHeight}, signal, [], priority)
-                assert(); if (signal?.aborted || renders.get(canvas) !== generation) throw aborted()
-                const context = canvas.getContext('2d'); if (!context) throw new PDFEngineError('pdf_canvas_failed', 'Canvas 2D is unavailable.')
-                canvas.width = pixelWidth; canvas.height = pixelHeight
-                context.putImageData(new ImageData(new Uint8ClampedArray(raster.rgba), pixelWidth, pixelHeight), 0, 0)
+                const raster=useBitmaps?await call('renderBitmap',{index,width:pixelWidth,height:pixelHeight},signal,[],priority):await call('render',{index,width:pixelWidth,height:pixelHeight},signal,[],priority)
+                try{
+                    assert();if(signal?.aborted||renders.get(canvas)!==generation)throw aborted()
+                    const context=canvas.getContext('2d');if(!context)throw new PDFEngineError('pdf_canvas_failed','Canvas 2D is unavailable.')
+                    canvas.width=pixelWidth;canvas.height=pixelHeight
+                    if('bitmap' in raster)context.drawImage(raster.bitmap,0,0)
+                    else context.putImageData(new ImageData(new Uint8ClampedArray(raster.rgba),pixelWidth,pixelHeight),0,0)
+                }finally{if('bitmap' in raster)raster.bitmap.close()}
                 return Object.freeze({pageIndex: index, width, height, pixelWidth, pixelHeight})
             },
+            ...(useBitmaps?{async renderTileBitmap(index:number,tile:PDFTile,signal?:AbortSignal,priority:PDFRenderPriority='background'){page(index);return call('renderTileBitmap',{index,tile},signal,[],priority)}}:{}),
             async renderTile(index: number,tile: PDFTile,signal?: AbortSignal,priority:PDFRenderPriority='background'): Promise<Raster> {
                 page(index);return call('renderTile',{index,tile},signal,[],priority)
             },
-            async renderTextLayer(index: number, container: HTMLElement, scale = 1): Promise<void> {
+            async renderTextLayer(index: number, container: HTMLElement, scale = 1, signal?:AbortSignal, priority:PDFRenderPriority='foreground'): Promise<void> {
                 page(index)
                 if (!(scale > 0) || !Number.isFinite(scale)) throw new RangeError('Invalid text scale')
                 const token = {}; textLayers.set(container, token)
-                const pageInfo = await info(index), content = await call('text', {index, geometry: true})
-                assert(); if (textLayers.get(container) !== token) return
+                const pageInfo = await info(index)
+                if(signal?.aborted||textLayers.get(container)!==token)return
+                const content = await call('text', {index, geometry: true},signal,[],priority)
+                assert(); if (signal?.aborted||textLayers.get(container) !== token) return
                 const fragment = container.ownerDocument.createDocumentFragment(), width = pageInfo.width * scale, height = pageInfo.height * scale
                 const measure=container.ownerDocument.createElement('canvas').getContext('2d')
+                let sliceStart=performance.now(),glyphCount=0
                 for(const [lineIndex,line] of pdfSelectionLines(content).entries()){
                     const top=line.y*height,lineHeight=line.height*height
                     for(const item of line.glyphs){
@@ -245,6 +295,11 @@ export async function openPDF(options: PDFOptions): Promise<IndependentPDFDocume
                         span.dataset.fffTextLine=String(lineIndex)
                         span.dataset.fffTextBox=JSON.stringify([item.x,line.y,item.width,line.height])
                         fragment.append(span)
+                        if(++glyphCount%256===0&&performance.now()-sliceStart>=6){
+                            await new Promise<void>(resolve=>setTimeout(resolve,0))
+                            if(closed||signal?.aborted||textLayers.get(container)!==token)return
+                            sliceStart=performance.now()
+                        }
                     }
                 }
                 container.replaceChildren(fragment)

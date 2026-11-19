@@ -15,7 +15,7 @@ try {
     assert.equal(packed.name,'@useflex/canvas')
     assert(packed.files.some(({path})=>path==='dist/flex-canvas.js'))
     for(const {path:file} of packed.files)assert(!/(^|\/)(\.env[^/]*|AGENTS\.md|node_modules|tests|\.cache|\.internal)(\/|$)/.test(file),file)
-    for(const file of ['LICENSE','COMMERCIAL.md','THIRD_PARTY_NOTICES.md','dist/browser/viewer.css','dist/pdfium-worker.js','dist/pdfium.wasm'])assert(packed.files.some(entry=>entry.path===file),file)
+    for(const file of ['LICENSE','COMMERCIAL.md','THIRD_PARTY_NOTICES.md','dist/browser/viewer.css','dist/pdfium-worker.js','dist/pdfium.wasm','dist/browser/reader.js','dist/reader.d.ts','dist/reader.css'])assert(packed.files.some(entry=>entry.path===file),file)
     const archive=path.join(temporary,packed.filename)
     execFileSync('tar',['-xzf',archive,'-C',temporary])
     const distribution=path.join(temporary,'package')

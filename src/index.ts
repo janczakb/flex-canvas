@@ -36,3 +36,6 @@ export {normalizeBookmarks,type ViewerBookmark} from './bookmarks.js'
 export type {ViewerPrintOptions} from './printing.js'
 
 export {createPDFSpreads,type PDFPageLayout} from './pdf/spread-layout.js'
+
+export {mountPDFReader,type PDFReaderOptions,type PDFReaderState,type PDFSearchState,type PDFReaderPrintOptions} from './reader.js'
+export type {PDFProgress} from './pdf.js'

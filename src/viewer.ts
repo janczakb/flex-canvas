@@ -51,6 +51,10 @@ export interface ViewerPDFReplacement {
 export type ViewerTheme = 'auto' | 'light' | 'dark'
 export interface MediaViewerOptions extends ViewerStylesOptions {
     /** Applies to the complete workspace, including panels and nested dialogs. */
+    onSearchChange?:(state:{index:number;total:number;pending:boolean})=>void
+    onViewportChange?:(state:{pageIndex:number;pageCount:number;scale:number;zoomMode:import('./pdf/zoom.js').ViewerZoomMode})=>void
+    showToolbar?:boolean
+    onProgress?:import("./pdf.js").PDFOptions["onProgress"]
     theme?: ViewerTheme
     bookmarks?:readonly ViewerBookmark[]
     saveBookmarks?:(bookmarks:readonly ViewerBookmark[],signal:AbortSignal)=>Promise<void>
@@ -178,7 +182,7 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
     loading.append(skeleton)
     const footer=make('div','fm-bar fm-footer'),status=make('span','fm-status')
     status.setAttribute('role','status');status.textContent=text('loading');footer.append(status)
-    stage.append(source,tileLayer,textLayer,overlay,links);scroller.append(stage);body.append(...(options.source.kind==='pdf'?[navigation,sidebar,scroller,loading]:[navigation,scroller,sidebar,loading]));root.append(top,slot,body,footer);shadow.append(root);container.append(host)
+    stage.append(source,tileLayer,textLayer,overlay,links);scroller.append(stage);body.append(...(options.source.kind==='pdf'?[navigation,sidebar,scroller,loading]:[navigation,scroller,sidebar,loading]));root.append(...(options.showToolbar===false?[]:[top]),slot,body,footer);shadow.append(root);container.append(host)
     const heroModule = import('./hero-controls.js')
     let hero: ReturnType<(typeof import('./hero-controls.js'))['createHeroControls']>
     try {
@@ -200,6 +204,8 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
     const sidebarItems=toolbar.getSidebarItems()
     let sidebarTool:SidebarItem=sidebarItems[0]??'thumbnails'
     let showNavigation:(mode:SidebarItem,force?:boolean)=>void=()=>{}
+    let sdkSearch:(query:string)=>Promise<void>=async()=>{}
+    let sdkNextSearch:(offset:number)=>void=()=>{}
     let searchHits:SearchHit[]=[],searchIndex=-1, searchAbort:AbortController|undefined
     let previewRender:AbortController|undefined
     let size={width:1,height:1},scale=1,renderedKey='',renderGeneration=0,frame=0,busy=false,refreshingPDF=false,closed=false,selected: string|null=null
@@ -339,7 +345,7 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
                 const document=pdf,epoch=flowEpoch,controller=new AbortController();flowController=controller
                 const parentAbort=()=>controller.abort();signal.addEventListener('abort',parentAbort,{once:true})
                 controller.signal.addEventListener('abort',()=>signal.removeEventListener('abort',parentAbort),{once:true})
-                flowPending=createPDFPageFlow({document,viewport:scroller,signal:controller.signal,paint:paintScene,activate:activateScene,current:()=>pageIndex,zoom:zoomState,pageLayout,firstPageSingle,scrollMode,pinned:()=>!!gesture||!!pan||selectingText,error:error=>{if((error as Error)?.name!=='AbortError')status.textContent=text('error')}})
+                flowPending=createPDFPageFlow({document,viewport:scroller,signal:controller.signal,onPageProgress:(pageIndex,ready)=>options.onProgress?.({phase:'render',pageIndex,loaded:ready?1:0,total:1}),paint:paintScene,activate:activateScene,current:()=>pageIndex,zoom:zoomState,pageLayout,firstPageSingle,scrollMode,pinned:()=>!!gesture||!!pan||selectingText,error:error=>{if((error as Error)?.name!=='AbortError')status.textContent=text('error')}})
                     .then(next=>{if(closed||epoch!==flowEpoch||pdf!==document||(scrollMode!=='continuous'&&pageLayout!=='double')){next.destroy();throw abortError()}flow=next;return next})
                     .catch(error=>{if(epoch===flowEpoch){flowPending=undefined;controller.abort()}throw error})
             }
@@ -539,8 +545,11 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
         }
         sync()
     }
+    let lastViewportReport=''
     function sync():void{
         if(closed)return
+        const viewportKey=[pageIndex,pageCount,scale,zoomState.mode].join(':')
+        if(viewportKey!==lastViewportReport){lastViewportReport=viewportKey;options.onViewportChange?.({pageIndex,pageCount,scale,zoomMode:zoomState.mode})}
         const state=model.getState()
         for(const key of ['select','pan'])controls.get(key)?.setAttribute('aria-pressed',String(tool===key))
         const fitButton=controls.get('fit')
@@ -809,16 +818,12 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
             sync()
             schedule()
         }
-        const searchSlot=make('div','fm-hero-input'), searchBar=make('form','fm-search'), results=make('span','fm-search-results')
-        let search:HTMLInputElement|null=null,searchPending=false
-        let previousMatch:HTMLButtonElement|undefined,nextMatch:HTMLButtonElement|undefined
+        const searchBar=make('div','fm-search')
+        let search:HTMLInputElement|null=null,searchPending=false,searchQuery=''
         searchBar.hidden=true
-        results.setAttribute('role','status');results.setAttribute('aria-atomic','true')
         syncSearch=()=>{
-            results.textContent=text('search_result_count').replace('{current}',String(searchHits.length?searchIndex+1:0)).replace('{total}',String(searchHits.length))
-            results.setAttribute('aria-busy',String(searchPending))
-            if(previousMatch)previousMatch.disabled=searchPending||searchHits.length===0
-            if(nextMatch)nextMatch.disabled=searchPending||searchHits.length===0
+            options.onSearchChange?.({index:searchHits.length?searchIndex+1:0,total:searchHits.length,pending:searchPending})
+            hero.update()
         }
         const showHit=(offset:number):void=>{
             if(!searchHits.length)return
@@ -828,13 +833,13 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
         const toggleSearch=():void=>{
             searchBar.hidden=!searchBar.hidden
             controls.get('search')?.setAttribute('aria-pressed',String(!searchBar.hidden))
-            if(!searchBar.hidden){syncSearch();search?.focus();return}
+            if(!searchBar.hidden){syncSearch();search?.focus();if(searchQuery)void find(searchQuery);return}
             searchAbort?.abort();searchPending=false;searchHits=[];searchIndex=-1;syncSearch();paint()
         }
         async function find(query:string):Promise<void>{
             if(!pdf)return
             searchAbort?.abort();const controller=new AbortController();searchAbort=controller
-            const document=pdf;searchHits=[];searchIndex=-1;searchPending=!!query;syncSearch();paint()
+            searchQuery=query;const document=pdf;searchHits=[];searchIndex=-1;searchPending=!!query;syncSearch();paint()
             if(!query)return
             const hits:SearchHit[]=[]
             try{
@@ -848,17 +853,16 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
                 if(hits.length)showHit(1);else syncSearch()
             }catch{if(!closed&&!controller.signal.aborted){searchPending=false;syncSearch();status.textContent=text('error')}}
         }
+        sdkSearch=find;sdkNextSearch=showHit
         addItem('search','search',toggleSearch)
         if(toolbar.hasItem('search')){
-            searchBar.append(searchSlot,results)
-            hero.input(searchSlot,()=>({type:'search','aria-label':text('search_query'),placeholder:text('search_query'),ref:node=>{search=node}}))
-            previousMatch=button('prev',()=>showHit(-1),searchBar);localize(previousMatch,'search_previous','aria-label')
-            nextMatch=button('next',()=>showHit(1),searchBar);localize(nextMatch,'search_next','aria-label')
-            button('close',toggleSearch,searchBar)
+            hero.documentSearch(searchBar,()=>({
+                query:searchQuery,count:text('search_result_count').replace('{current}',String(searchHits.length?searchIndex+1:0)).replace('{total}',String(searchHits.length)),pending:searchPending,hasResults:searchHits.length>0,
+                label:text('search_query'),clearLabel:text('search_clear'),nextLabel:text('search_next'),previousLabel:text('search_previous'),
+                inputRef:node=>{search=node},onChange:query=>{searchQuery=query;void find(query)},onNavigate:showHit,onClose:()=>{toggleSearch();controls.get('search')?.focus()},
+            }))
             syncSearch()
-            searchBar.onsubmit=event=>{event.preventDefault();void find(search?.value.trim()??'')}
-            searchBar.onkeydown=event=>{if(event.key==='Escape'){event.stopPropagation();toggleSearch();controls.get('search')?.focus()}}
-            root.append(searchBar)
+            body.append(searchBar)
         }
         const openPageEditor=()=>{
             if(!pdf||editingContent||!canOperate('pages')||controls.get('edit-pages')?.disabled)return
@@ -1514,13 +1518,14 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
         for(const [node,bindings] of translationsByElement)if(node.isConnected)for(const [attribute,key] of bindings)localize(node,key,attribute)
         if(options.source.kind==='pdf'){
             const {openPDF}=await import('./pdf.js')
-            pdf=await openPDF({...options.source.pdf,source:options.source.source,signal});pageCount=pdf.pageCount;bookmarks=normalizeBookmarks(options.bookmarks??[],pageCount)
+            pdf=await openPDF({...options.source.pdf,source:options.source.source,signal,onProgress:options.onProgress??options.source.pdf.onProgress});pageCount=pdf.pageCount;bookmarks=normalizeBookmarks(options.bookmarks??[],pageCount)
         }else{
             image=make('img');image.alt=options.name??'';image.src=options.source.url
             await image.decode();signal.throwIfAborted();source.replaceWith(image)
         }
         if(signal.aborted)throw abortError()
         translationsByElement.delete(status);status.textContent='';await layout();signal.throwIfAborted();observer.observe(scroller);loading.remove();skeletonBar.remove();top.inert=false;root.removeAttribute('data-loading');root.setAttribute('aria-busy','false');switchTool('select');sync();drawLinks();root.focus({preventScroll:true})
-        return Object.freeze({element:host,getState:()=>({pageIndex,pageCount,bookmarks,documentChanged,readOnly:read,scrollMode,pageLayout,firstPageSingle,zoomMode:zoomState.mode,zoomLevel:scale,annotations:visibleShapes()}),setPage,setScrollMode,setPageLayout,setZoom,applyRedactions,exportPDF,print:preparePrint,fitPage:()=>setZoom('fit-page'),fitWidth:()=>setZoom('fit-width'),setLocale,get locale(){return locale},setTheme,get theme(){return theme},requestClose,destroy})
+        options.onProgress?.({phase:'ready',loaded:1,total:1,pageIndex})
+        return Object.freeze({element:host,getState:()=>({pageIndex,pageCount,bookmarks,documentChanged,readOnly:read,scrollMode,pageLayout,firstPageSingle,zoomMode:zoomState.mode,zoomLevel:scale,annotations:visibleShapes()}),search:async(query:string)=>{if(typeof query!=='string'||query.length>1024)throw new RangeError('Invalid PDF search');await sdkSearch(query);return searchHits.map(hit=>({...hit,rectangles:hit.rectangles.map(rect=>({...rect}))}))},nextSearchResult:(direction:1|-1=1)=>sdkNextSearch(direction),setPage,setScrollMode,setPageLayout,setZoom,applyRedactions,exportPDF,print:preparePrint,fitPage:()=>setZoom('fit-page'),fitWidth:()=>setZoom('fit-width'),setLocale,get locale(){return locale},setTheme,get theme(){return theme},requestClose,destroy})
     }catch(error){await destroy();throw error}
 }

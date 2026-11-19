@@ -13,6 +13,8 @@ interface PageSize {width:number;height:number}
 interface PrintOptions {
     owner:HTMLElement;signal:AbortSignal;label:(key:string)=>string;title:string
     assetBaseUrl?:string|URL;settings?:ViewerPrintOptions
+    showProgress?:boolean
+    onProgress?:(done:number,total:number)=>void
     pages:()=>Promise<readonly PageSize[]>
     render:(index:number,canvas:HTMLCanvasElement,scale:number,signal:AbortSignal)=>Promise<void>
 }
@@ -40,11 +42,11 @@ export async function printMedia(options:PrintOptions):Promise<boolean> {
     }
     signal.addEventListener('abort',abort,{once:true});controller.signal.addEventListener('abort',clear,{once:true})
     try{
-        progress=openPrintProgress(owner,label,abort)
+        if(options.showProgress!==false)progress=openPrintProgress(owner,label,abort)
         // The UI is mounted before any worker preparation starts.
         const pages=await options.pages();controller.signal.throwIfAborted()
         if(!pages.length||pages.some(page=>![page.width,page.height].every(value=>Number.isFinite(value)&&value>0)))throw new Error('Invalid print pages')
-        progress.update(0,pages.length)
+        progress?.update(0,pages.length);options.onProgress?.(0,pages.length)
         const area=pages.reduce((sum,page)=>sum+page.width*page.height,0)
         const scale=Math.min(settings.dpi/72,Math.sqrt(settings.maxTotalPixels/area),...pages.map(page=>Math.sqrt(settings.maxPagePixels/(page.width*page.height))))
         if(scale<.5)throw new Error(label('print_too_large'))
@@ -76,9 +78,9 @@ export async function printMedia(options:PrintOptions):Promise<boolean> {
             section.className='fm-print-page'
             image.alt='';image.src=url;section.append(image);printRoot.append(section)
             await image.decode();controller.signal.throwIfAborted()
-            canvas.width=canvas.height=1;progress.update(index+1,pages.length)
+            canvas.width=canvas.height=1;progress?.update(index+1,pages.length);options.onProgress?.(index+1,pages.length)
         }
-        await progress.close();controller.signal.throwIfAborted()
+        await progress?.close();controller.signal.throwIfAborted()
         // One actual layout pass after image decoding and modal exit, not a readiness timeout.
         await new Promise<void>(resolve=>view.requestAnimationFrame(()=>resolve()))
         controller.signal.throwIfAborted()

@@ -103,6 +103,7 @@ export default {
     "italic": "Kursywa",
     "canvas": "Warstwa adnotacji",
     "search": "Szukaj w dokumencie",
+    "search_clear": "Wyczyść wyszukiwanie",
     "search_query": "Znajdź tekst",
     "search_results": "wyników",
     "pages_panel": "Strony i spis treści",

@@ -1,0 +1,10 @@
+.fm-reader-viewport{position:relative;width:100%;height:100%;overflow:auto;background:#e9ebee;overscroll-behavior:contain;outline:none}
+.fm-reader-viewport .fm-flow{position:relative}
+.fm-reader-viewport .fm-flow-page{position:absolute;background:#fff;box-shadow:0 1px 4px #0002;contain:layout style}
+.fm-reader-viewport .fm-flow-page>.fm-page-source,.fm-reader-viewport .fm-flow-page>.fm-pdf-tiles,.fm-reader-viewport .fm-flow-page>.fm-text,.fm-reader-viewport .fm-flow-page>.fm-page-overlay,.fm-reader-viewport .fm-flow-page>.fm-links{position:absolute;inset:0;width:100%;height:100%}
+.fm-reader-viewport .fm-page-source,.fm-reader-viewport .fm-page-overlay,.fm-reader-viewport .fm-pdf-tiles{pointer-events:none}
+.fm-reader-viewport .fm-pdf-tiles canvas{position:absolute}
+.fm-reader-viewport .fm-text{user-select:text;cursor:text}
+.fm-reader-viewport .fm-text span{transform-origin:0 0;user-select:text}
+.fm-reader-viewport .fm-text ::selection{background:#4080ff66}
+.fm-reader-viewport .fm-links{pointer-events:none}

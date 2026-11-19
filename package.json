@@ -1,6 +1,6 @@
 {
   "name": "@useflex/canvas",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "description": "Image and PDF viewing, annotations, signatures and document editing for the web.",
   "exports": {
@@ -21,7 +21,12 @@
     "./licenses/*": "./licenses/*",
     "./redaction-font.ttf": "./dist/redaction-regular.ttf",
     "./print.css": "./dist/browser/print.css",
-    "./cdn": "./dist/flex-canvas.js"
+    "./cdn": "./dist/flex-canvas.js",
+    "./reader": {
+      "types": "./dist/reader.d.ts",
+      "import": "./dist/browser/reader.js"
+    },
+    "./reader.css": "./dist/reader.css"
   },
   "files": [
     "dist",
@@ -37,8 +42,8 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node tests/media-viewer-sdk.mjs && node tests/media-viewer-pdfium.mjs && node tests/media-viewer-render-pipeline.mjs && node tests/media-viewer-redactions-native.mjs",
-    "test:browser": "node tests/media-viewer-browser.mjs && node tests/media-viewer-note-interactions.mjs && node tests/media-viewer-pdfium-browser.mjs && node tests/media-viewer-toolbar-feedback.mjs && node tests/media-viewer-signature.mjs && node tests/media-viewer-tool-properties.mjs && node tests/media-viewer-pdf-selection.mjs && node tests/media-viewer-page-flow.mjs && node tests/media-viewer-pdf-layout.mjs && node tests/media-viewer-redactions-browser.mjs && node tests/media-viewer-navigation-editor.mjs && node tests/media-viewer-text-annotations.mjs && node tests/media-viewer-print-insert-navigation.mjs && node tests/media-viewer-spreads-thumbnails.mjs && node tests/media-viewer-resize-stability.mjs",
+    "test": "node tests/media-viewer-sdk.mjs && node tests/media-viewer-pdfium.mjs && node tests/media-viewer-render-pipeline.mjs && node tests/media-viewer-source.mjs && node tests/media-viewer-progressive.mjs && node tests/media-viewer-redactions-native.mjs",
+    "test:browser": "node tests/media-viewer-browser.mjs && node tests/media-viewer-note-interactions.mjs && node tests/media-viewer-pdfium-browser.mjs && node tests/media-viewer-toolbar-feedback.mjs && node tests/media-viewer-signature.mjs && node tests/media-viewer-tool-properties.mjs && node tests/media-viewer-pdf-selection.mjs && node tests/media-viewer-page-flow.mjs && node tests/media-viewer-pdf-layout.mjs && node tests/media-viewer-redactions-browser.mjs && node tests/media-viewer-navigation-editor.mjs && node tests/media-viewer-text-annotations.mjs && node tests/media-viewer-print-insert-navigation.mjs && node tests/media-viewer-spreads-thumbnails.mjs && node tests/media-viewer-resize-stability.mjs && node tests/media-viewer-reader.mjs && node tests/media-viewer-host-api.mjs && node tests/media-viewer-streaming.mjs && node tests/media-viewer-search-panel.mjs",
     "verify": "npm run build && npm test && npm run test:browser",
     "demo": "node scripts/serve.mjs",
     "examples:fetch": "node scripts/fetch-examples.mjs",

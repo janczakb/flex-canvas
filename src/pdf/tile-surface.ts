@@ -6,7 +6,9 @@ const maxViewportTiles = 64
 
 type CanvasTile = {key:string; area:PDFTile; canvas:HTMLCanvasElement; visible:boolean; distance:number}
 type SurfacePage = {document:IndependentPDFDocument; index:number; width:number; height:number; dpr:number}
-type CachedTile = {width:number;height:number;rgba:ArrayBuffer}
+type CachedTile = {width:number;height:number;rgba:ArrayBuffer}|{width:number;height:number;bitmap:ImageBitmap}
+const bytes=(value:CachedTile)=>'rgba' in value?value.rgba.byteLength:value.width*value.height*4
+const close=(value:CachedTile)=>{if('bitmap' in value)value.bitmap.close()}
 
 /** One byte-bounded LRU across all visible PDF pages. */
 export function createPDFTileCache(){
@@ -14,11 +16,12 @@ export function createPDFTileCache(){
     return {
         get(key:string){const value=entries.get(key);if(value){entries.delete(key);entries.set(key,value)}return value},
         set(key:string,raster:CachedTile){
-            const previous=entries.get(key);if(previous)used-=previous.rgba.byteLength
-            entries.delete(key);entries.set(key,raster);used+=raster.rgba.byteLength
-            while(used>cacheBytes&&entries.size){const first=entries.keys().next().value!;used-=entries.get(first)!.rgba.byteLength;entries.delete(first)}
+            const previous=entries.get(key);if(previous)used-=bytes(previous)
+            if(previous&&previous!==raster)close(previous)
+            entries.delete(key);entries.set(key,raster);used+=bytes(raster)
+            while(used>cacheBytes&&entries.size){const first=entries.keys().next().value!;used-=bytes(entries.get(first)!);close(entries.get(first)!);entries.delete(first)}
         },
-        clear(){entries.clear();used=0},
+        clear(){for(const value of entries.values())close(value);entries.clear();used=0},
     }
 }
 
@@ -31,7 +34,8 @@ export function createPDFTileSurface(layer: HTMLElement, viewport: HTMLElement, 
     function paint(tile:CanvasTile,raster:CachedTile) {
         const {canvas}=tile
         canvas.width=raster.width;canvas.height=raster.height
-        canvas.getContext('2d')?.putImageData(new ImageData(new Uint8ClampedArray(raster.rgba),raster.width,raster.height),0,0)
+        if('bitmap' in raster)canvas.getContext('2d')?.drawImage(raster.bitmap,0,0)
+        else canvas.getContext('2d')?.putImageData(new ImageData(new Uint8ClampedArray(raster.rgba),raster.width,raster.height),0,0)
         canvas.dataset.loaded='true'
     }
     function draw() {
@@ -77,8 +81,8 @@ export function createPDFTileSurface(layer: HTMLElement, viewport: HTMLElement, 
         if(!tile)return
         const current=page,version=epoch,controller=new AbortController()
         active={key:tile.key,controller}
-        void current.document.renderTile(current.index,tile.area,controller.signal,tile.visible?'foreground':'background').then(raster=>{
-            if(signal.aborted||controller.signal.aborted||version!==epoch||tiles.get(tile.key)!==tile)return
+        void (current.document.renderTileBitmap?.(current.index,tile.area,controller.signal,tile.visible?'foreground':'background')??current.document.renderTile(current.index,tile.area,controller.signal,tile.visible?'foreground':'background')).then(raster=>{
+            if(signal.aborted||controller.signal.aborted||version!==epoch||tiles.get(tile.key)!==tile){close(raster);return}
             cache.set(tile.key,raster);paint(tile,raster)
         }).catch(error=>{
             if(!controller.signal.aborted&&!signal.aborted&&version===epoch){tile.canvas.dataset.loaded='error';onError(error)}

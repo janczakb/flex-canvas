@@ -3,12 +3,18 @@ import {validatePDFCrops,type PDFCrop} from './crop.js'
 import {validatePDFRedactions,type PDFRedaction} from './redactions.js'
 import { init, type WrappedPdfiumModule } from '@embedpdf/pdfium'
 import { PDFEngineError, type PageInfo } from './types.js'
-import type { OutlineItem, PageText, PDFLink, PDFMetadata, PDFPageOverlay, PDFTile, Raster, PDFTextPreview, PDFTextFlowLayout, SearchHit } from './protocol.js'
+import type { OutlineItem, PageText, PDFLink, PDFMetadata, PDFPageOverlay, PDFTile, BitmapRaster, Raster, PDFTextPreview, PDFTextFlowLayout, SearchHit } from './protocol.js'
+import type {PDFRandomAccessSource} from './random-access.js'
 import { readBoundedBytes } from './source.js'
 import { validatePagePlan, type PDFPageEdit } from './page-plan.js'
 
 /** One document per worker: handles never cross the boundary and terminate frees WASM memory. */
 export class PDFiumDocument {
+    private readonly pages = new Map<number, number>()
+    private randomSource?:PDFRandomAccessSource
+    private fileAccess=0
+    private fileCallback=0
+    private readFailure:unknown
     private document = 0
     private bytes = 0
     private byteLength = 0
@@ -37,6 +43,31 @@ export class PDFiumDocument {
             return instance
         } catch (error) { instance.destroy(); throw error }
     }
+    static async openSource(source:PDFRandomAccessSource,wasmUrl:string,password='',maxPages=2000,runtime?:Promise<WrappedPdfiumModule>):Promise<PDFiumDocument>{
+        const api=await(runtime??PDFiumDocument.prepare(wasmUrl)),instance=new PDFiumDocument(api)
+        instance.randomSource=source;instance.byteLength=source.size
+        try{
+            instance.fileAccess=instance.allocate(12)
+            instance.fileCallback=api.pdfium.addFunction((_param:number,offset:number,pointer:number,length:number)=>{
+                try{source.read(offset>>>0,instance.heap().subarray(pointer,pointer+(length>>>0)));return 1}
+                catch(error){instance.readFailure=error;return 0}
+            },'iiiii')
+            api.pdfium.setValue(instance.fileAccess,source.size,'i32');api.pdfium.setValue(instance.fileAccess+4,instance.fileCallback,'i32');api.pdfium.setValue(instance.fileAccess+8,0,'i32')
+            instance.document=api.FPDF_LoadCustomDocument(instance.fileAccess,password);instance.assertSource()
+            if(!instance.document)throw new PDFEngineError(api.FPDF_GetLastError()===4?'pdf_password_required':'pdf_invalid','Unable to open this PDF.')
+            if(instance.pageCount<1||instance.pageCount>maxPages)throw new PDFEngineError('pdf_page_limit','PDF page count exceeds the limit.')
+            return instance
+        }catch(error){instance.destroy();throw error}
+    }
+    assertSource():void{if(this.readFailure)throw this.readFailure}
+    private sourcePointer():number{
+        if(!this.bytes&&this.randomSource){
+            if(this.byteLength>104857600)throw new PDFEngineError('pdf_edit_size_limit','Editing requires a bounded in-memory source.')
+            this.bytes=this.allocate(this.byteLength)
+            try{this.randomSource.read(0,this.heap().subarray(this.bytes,this.bytes+this.byteLength))}catch(error){this.free(this.bytes);this.bytes=0;throw error}
+        }
+        return this.bytes
+    }
     get pageCount(): number { return this.api.FPDF_GetPageCount(this.document) }
     private heap(): Uint8Array { return (this.api.pdfium as unknown as { HEAPU8: Uint8Array }).HEAPU8 }
     private allocate(bytes: number): number {
@@ -47,9 +78,20 @@ export class PDFiumDocument {
     private free(pointer: number): void { if (pointer) this.api.pdfium.wasmExports.free(pointer) }
     private withPage<T>(index: number, operation: (page: number) => T): T {
         if (!this.document || !Number.isSafeInteger(index) || index < 0 || index >= this.pageCount) throw new PDFEngineError('pdf_page_invalid', 'Invalid PDF page.')
-        const page = this.api.FPDF_LoadPage(this.document, index)
-        if (!page) throw new PDFEngineError('pdf_page_failed', 'Unable to open the PDF page.')
-        try { return operation(page) } finally { this.api.FPDF_ClosePage(page) }
+        let page = this.pages.get(index)
+        if (page) this.pages.delete(index)
+        else {
+            page = this.api.FPDF_LoadPage(this.document, index)
+            if (!page) throw new PDFEngineError('pdf_page_failed', 'Unable to open the PDF page.')
+        }
+        this.pages.set(index, page)
+        // A tile sequence reuses parsed native page resources; the document is immutable.
+        while (this.pages.size > 4) {
+            const oldest = this.pages.keys().next().value!
+            this.api.FPDF_ClosePage(this.pages.get(oldest)!)
+            this.pages.delete(oldest)
+        }
+        return operation(page)
     }
     info(index: number): PageInfo {
         return this.withPage(index, page => ({pageIndex: index, width: this.api.FPDF_GetPageWidth(page), height: this.api.FPDF_GetPageHeight(page), rotation: this.api.FPDFPage_GetRotation(page) * 90}))
@@ -101,15 +143,54 @@ export class PDFiumDocument {
         if (!bitmap) throw new PDFEngineError('pdf_memory_limit', 'Unable to allocate PDF bitmap.')
         try {
             this.api.FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xffffffff)
-            this.api.FPDF_RenderPageBitmap(bitmap, page, -x, -y, pageWidth, pageHeight, 0, 1)
+            this.api.FPDF_RenderPageBitmap(bitmap, page, -x, -y, pageWidth, pageHeight, 0, 1 | 0x10)
             const pointer = this.api.FPDFBitmap_GetBuffer(bitmap), stride = this.api.FPDFBitmap_GetStride(bitmap), heap = this.heap()
             const rgba = new Uint8Array(width * height * 4)
-            for (let row = 0; row < height; row++) for (let col = 0; col < width; col++) {
-                const input = pointer + row * stride + col * 4, output = (row * width + col) * 4
-                rgba[output] = heap[input + 2]; rgba[output + 1] = heap[input + 1]; rgba[output + 2] = heap[input]; rgba[output + 3] = heap[input + 3]
-            }
+            // PDFium writes RGBA directly; transfer a bounded owned buffer, never detach WASM.
+            if(stride===width*4)rgba.set(heap.subarray(pointer,pointer+rgba.byteLength))
+            else for(let row=0;row<height;row++)rgba.set(heap.subarray(pointer+row*stride,pointer+row*stride+width*4),row*width*4)
             return {width, height, rgba: rgba.buffer}
         } finally { this.api.FPDFBitmap_Destroy(bitmap) }
+    }
+    /** Yield to the worker event loop between PDFium render slices, allowing active cancellation. */
+    async renderScheduled(index:number,tile:PDFTile,cancelled:()=>boolean,tiling=true,bitmapOutput=false):Promise<Raster|BitmapRaster>{
+        const {x,y,width,height,pageWidth,pageHeight}=tile
+        const dimensionLimit=tiling?1024:8192
+        if(![x,y,width,height,pageWidth,pageHeight].every(Number.isSafeInteger)||x<0||y<0||width<1||height<1||width>dimensionLimit||height>dimensionLimit||width*height>16777216||x+width>pageWidth||y+height>pageHeight||pageWidth>65536||pageHeight>65536)throw new PDFEngineError('pdf_render_limit','PDF raster exceeds the limits.')
+        const page=this.withPage(index,page=>page),overlap=tiling?2:0,left=Math.max(0,x-overlap),top=Math.max(0,y-overlap),right=Math.min(pageWidth,x+width+overlap),bottom=Math.min(pageHeight,y+height+overlap)
+        const w=right-left,h=bottom-top,bitmap=this.api.FPDFBitmap_Create(w,h,1)
+        if(!bitmap)throw new PDFEngineError('pdf_memory_limit','Unable to allocate PDF bitmap.')
+        let pause=0,callback=0,started=false
+        const check=()=>{if(cancelled())throw new PDFEngineError('pdf_cancelled','PDF render cancelled.')}
+        try{
+            check();pause=this.allocate(12);let deadline=performance.now()+8
+            callback=this.api.pdfium.addFunction(()=>Number(cancelled()||performance.now()>=deadline),'ii')
+            this.api.pdfium.setValue(pause,1,'i32');this.api.pdfium.setValue(pause+4,callback,'i32');this.api.pdfium.setValue(pause+8,0,'i32')
+            this.api.FPDFBitmap_FillRect(bitmap,0,0,w,h,0xffffffff);started=true
+            let status=this.api.FPDF_RenderPageBitmap_Start(bitmap,page,-left,-top,pageWidth,pageHeight,0,1|0x10,pause)
+            while(status===1){
+                await new Promise<void>(resolve=>setTimeout(resolve,0));check();deadline=performance.now()+8
+                status=this.api.FPDF_RenderPage_Continue(page,pause)
+            }
+            check();this.assertSource()
+            if(status!==2)throw new PDFEngineError('pdf_render_failed','PDF rasterization failed.')
+            const pointer=this.api.FPDFBitmap_GetBuffer(bitmap),stride=this.api.FPDFBitmap_GetStride(bitmap),heap=this.heap()
+            if(bitmapOutput){
+                if(typeof createImageBitmap!=='function')throw new PDFEngineError('pdf_bitmap_unavailable','ImageBitmap transport is unavailable.')
+                const pixels=new Uint8ClampedArray(stride===w*4?heap.buffer:new ArrayBuffer(w*h*4),stride===w*4?pointer:0,w*h*4)
+                if(stride!==w*4)for(let row=0;row<h;row++)pixels.set(heap.subarray(pointer+row*stride,pointer+row*stride+w*4),row*w*4)
+                const image=await createImageBitmap(new ImageData(pixels,w,h),x-left,y-top,width,height,{premultiplyAlpha:'none',colorSpaceConversion:'none'})
+                if(cancelled()){image.close();check()}
+                return {width,height,bitmap:image}
+            }
+            const rgba=new Uint8Array(width*height*4)
+            for(let row=0;row<height;row++){const offset=pointer+(row+y-top)*stride+(x-left)*4;rgba.set(heap.subarray(offset,offset+width*4),row*width*4)}
+            return {width,height,rgba:rgba.buffer}
+        }finally{
+            if(started)this.api.FPDF_RenderPage_Close(page)
+            if(callback)this.api.pdfium.removeFunction(callback)
+            this.free(pause);this.api.FPDFBitmap_Destroy(bitmap)
+        }
     }
     private utf16(size: number, read: (pointer: number, size: number) => number, maxBytes = 2 * 1024 * 1024): string {
         if (size <= 2) return ''
@@ -237,11 +318,13 @@ export class PDFiumDocument {
         })
     }
     get canEditPages(): boolean {
-        return this.api.FPDF_GetSecurityHandlerRevision(this.document) === -1
+        return this.byteLength<=104857600 && this.api.FPDF_GetSecurityHandlerRevision(this.document) === -1
             && this.api.FPDF_GetSignatureCount(this.document) === 0
     }
 
     getBytes(): ArrayBuffer {
+        if(this.byteLength>104857600)throw new PDFEngineError('pdf_size_limit','Full-byte export exceeds the memory budget.')
+        if(this.randomSource){const bytes=new Uint8Array(this.byteLength);this.randomSource.read(0,bytes);return bytes.buffer}
         return this.heap().slice(this.bytes, this.bytes + this.byteLength).buffer as ArrayBuffer
     }
 
@@ -459,7 +542,7 @@ export class PDFiumDocument {
     editText(edits: readonly PDFTextEdit[], maxBytes: number): ArrayBuffer {
         validatePDFTextEdits(edits, this.pageCount)
         if (!this.canEditPages) throw new PDFEngineError('pdf_edit_protected', 'This PDF cannot be edited.')
-        const api = this.api, output = api.FPDF_LoadMemDocument(this.bytes,this.byteLength,'')
+        const api = this.api, output = api.FPDF_LoadMemDocument(this.sourcePointer(),this.byteLength,'')
         if (!output) throw new PDFEngineError('pdf_text_edit_failed', 'Cannot open a PDF working copy.')
         try {
             const byPage = new Map<number,PDFTextEdit[]>()
@@ -562,7 +645,7 @@ export class PDFiumDocument {
         if(!Number.isSafeInteger(index)||index<0||index>=this.pageCount||edits.some(edit=>edit.pageIndex!==index)
             ||![width,height].every(value=>Number.isSafeInteger(value)&&value>0&&value<=2048)||width*height>3145728)throw new RangeError('Invalid text preview')
         if(!this.canEditPages)throw new PDFEngineError('pdf_edit_protected','This PDF cannot be edited.')
-        const api=this.api,copy=api.FPDF_LoadMemDocument(this.bytes,this.byteLength,'')
+        const api=this.api,copy=api.FPDF_LoadMemDocument(this.sourcePointer(),this.byteLength,'')
         if(!copy)throw new PDFEngineError('pdf_text_edit_failed','Cannot open a PDF preview.')
         try{
             const page=api.FPDF_LoadPage(copy,index)
@@ -583,7 +666,7 @@ export class PDFiumDocument {
     cropPages(crops: readonly PDFCrop[], maxBytes: number): ArrayBuffer {
         validatePDFCrops(crops, this.pageCount)
         if (!this.canEditPages) throw new PDFEngineError('pdf_edit_protected', 'Signed or encrypted PDFs cannot be cropped.')
-        const api = this.api, output = api.FPDF_LoadMemDocument(this.bytes, this.byteLength, '')
+        const api = this.api, output = api.FPDF_LoadMemDocument(this.sourcePointer(), this.byteLength, '')
         if (!output) throw new PDFEngineError('pdf_crop_failed', 'Cannot open a PDF working copy.')
         let scratch = 0
         try {
@@ -609,7 +692,7 @@ export class PDFiumDocument {
         if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>104857600)throw new RangeError('Invalid output byte budget')
         if(fontBytes&&(!(fontBytes instanceof Uint8Array)||fontBytes.byteLength<1||fontBytes.byteLength>2097152))throw new RangeError('Invalid redaction font')
         if(!this.canEditPages)throw new PDFEngineError('pdf_edit_protected','Signed or encrypted PDFs cannot be redacted.')
-        const api=this.api,output=api.FPDF_LoadMemDocument(this.bytes,this.byteLength,'')
+        const api=this.api,output=api.FPDF_LoadMemDocument(this.sourcePointer(),this.byteLength,'')
         if(!output)throw new PDFEngineError('pdf_redaction_failed','Cannot open a PDF working copy.')
         const rgb=(color:string)=>[1,3,5].map(offset=>parseInt(color.slice(offset,offset+2),16))
         let font=0,fontMemory=0,painted=0
@@ -699,7 +782,7 @@ export class PDFiumDocument {
         if (!overlays.length) return this.getBytes()
         if (!this.canEditPages || overlays.length > this.pageCount) throw new PDFEngineError('pdf_edit_protected', 'The PDF cannot accept overlays.')
         const api = this.api
-        const output = api.FPDF_LoadMemDocument(this.bytes, this.byteLength, '')
+        const output = api.FPDF_LoadMemDocument(this.sourcePointer(), this.byteLength, '')
         if (!output) throw new Error('Unable to open PDF export')
         try {
             const seen = new Set<number>()
@@ -780,7 +863,7 @@ export class PDFiumDocument {
             throw new PDFEngineError('pdf_size_limit', 'PDF duplication exceeds the working memory budget.')
         }
         const api = this.api
-        const output = api.FPDF_LoadMemDocument(this.bytes, this.byteLength, '')
+        const output = api.FPDF_LoadMemDocument(this.sourcePointer(), this.byteLength, '')
         if (!output) throw new PDFEngineError('pdf_edit_failed', 'Unable to open a writable PDF copy.')
         let indices = 0
         try {
@@ -821,8 +904,13 @@ export class PDFiumDocument {
     }
 
     destroy(): void {
+        for (const page of this.pages.values()) this.api.FPDF_ClosePage(page)
+        this.pages.clear()
         if (this.document) this.api.FPDF_CloseDocument(this.document)
-        this.document = 0; this.free(this.bytes); this.bytes = 0
+        this.document = 0;
+        if(this.fileCallback){this.api.pdfium.removeFunction(this.fileCallback);this.fileCallback=0}
+        this.free(this.fileAccess);this.fileAccess=0;this.randomSource?.destroy();this.randomSource=undefined
+        this.free(this.bytes); this.bytes = 0
         this.api.FPDF_DestroyLibrary()
     }
 }

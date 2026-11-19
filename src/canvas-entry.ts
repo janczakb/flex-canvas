@@ -5,7 +5,7 @@ import type {PDFOptions} from './pdf.js'
 export type CanvasOptions = Omit<MediaViewerOptions, 'source'> & {
     source: {kind: 'image'; url: string} | {
         kind: 'pdf'
-        source: string | Uint8Array
+        source: string | Uint8Array | Blob
         pdf?: Partial<Omit<PDFOptions, 'source' | 'signal'>>
     }
 }

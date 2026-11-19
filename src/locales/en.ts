@@ -103,6 +103,7 @@ export default {
     "italic": "Italic",
     "canvas": "Image annotation canvas",
     "search": "Search document",
+    "search_clear": "Clear search",
     "search_query": "Find text",
     "search_results": "results",
     "pages_panel": "Pages and outline",

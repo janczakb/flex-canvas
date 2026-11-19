@@ -42,7 +42,7 @@ try{
  await redactions.getByRole('button',{name:'Apply redactions',exact:true}).click()
  await root.getByRole('dialog').getByRole('button',{name:'Apply redactions',exact:true}).click()
  await page.waitForFunction(()=>window.exampleViewer().getState().annotations.length===0)
- await page.waitForFunction(()=>window.exampleViewer().element.shadowRoot.querySelector('[role=status]').textContent.includes('Redactions applied'))
+ await root.locator('.fm-footer > [role="status"]').filter({hasText:'Redactions applied'}).waitFor({state:'visible'})
  assert(!await root.locator('.fm-text').innerText().then(t=>t.includes('FLEX project')),'Applied text must disappear from the live text layer')
  const bytes=await page.evaluate(async()=>Array.from(new Uint8Array(await window.exampleViewer().exportPDF())))
  const require=createRequire(import.meta.url),wasm='data:application/wasm;base64,'+Buffer.from(await readFile(require.resolve('@embedpdf/pdfium/pdfium.wasm'))).toString('base64')

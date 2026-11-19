@@ -10,6 +10,7 @@ export interface SearchHit { pageIndex: number; start: number; length: number; r
 export interface OutlineItem { title: string; pageIndex: number | null; children: OutlineItem[] }
 export interface PDFMetadata { title: string; author: string; subject: string; creator: string; producer: string; pageCount: number; permissions: number }
 export interface PDFLink { x: number; y: number; width: number; height: number; pageIndex?: number; url?: string }
+export interface BitmapRaster {width:number;height:number;bitmap:ImageBitmap}
 export interface Raster { width: number; height: number; rgba: ArrayBuffer }
 export interface PDFTile {x: number; y: number; width: number; height: number; pageWidth: number; pageHeight: number}
 export interface PDFTextFlowLayout {
@@ -22,12 +23,16 @@ export interface PDFTextFlowLayout {
 export interface PDFTextPreview extends Raster {x:number;y:number;fractionWidth:number;fractionHeight:number;layouts:readonly PDFTextFlowLayout[]}
 export interface PDFPageOverlay extends Raster { index: number }
 export interface PDFMethods {
-    prepare: { input: {wasmUrl:string}; output: true }
+    cancel:{input:{requestId:number};output:true}
+    openSource:{input:{source:import('./random-access.js').PDFSourceDescriptor;wasmUrl:string;password:string;maxPages:number};output:{pageCount:number;canEditPages:boolean}}
+    prepare: { input: {wasmUrl:string}; output: true | {bitmap:boolean} }
     open: { input: { bytes: ArrayBuffer; wasmUrl: string; password: string; maxPages: number }; output: {pageCount: number; canEditPages: boolean} }
     sizes: {input: Record<string,never>;output: Array<{width:number;height:number}>}
     info: { input: {index: number}; output: PageInfo }
     text: { input: {index: number; geometry: boolean}; output: PageText }
     render: { input: {index: number; width: number; height: number}; output: Raster }
+    renderBitmap:{input:{index:number;width:number;height:number};output:BitmapRaster}
+    renderTileBitmap:{input:{index:number;tile:PDFTile};output:BitmapRaster}
     renderTile: { input: {index: number; tile: PDFTile}; output: Raster }
     search: { input: {index: number; query: string; matchCase: boolean; wholeWord: boolean; limit: number}; output: SearchHit[] }
     outline: { input: Record<string, never>; output: OutlineItem[] }
@@ -44,4 +49,5 @@ export interface PDFMethods {
 }
 export type PDFMethod = keyof PDFMethods
 export type PDFRequest = { [K in PDFMethod]: {id: number; method: K; input: PDFMethods[K]['input']} }[PDFMethod]
+export interface PDFSourceProgress {event:'source-progress';loaded:number;total:number}
 export type PDFResponse = {id: number; ok: true; value: unknown} | {id: number; ok: false; code: string}

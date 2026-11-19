@@ -13,7 +13,7 @@ if(result.status!==0)process.exit(result.status??1)
 const {build}=await import(require.resolve('esbuild'))
 const workerBuild=await build({entryPoints:[path.join(root,'src/pdf/worker.ts')],outfile:path.join(root,'dist/pdfium-worker.js'),bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,legalComments:'linked',metafile:true})
 const viewerBuild=await build({
-    entryPoints: [path.join(root,'src/index.ts')], outdir: path.join(root,'dist/browser'),
+    entryPoints: {index:path.join(root,'src/index.ts'),reader:path.join(root,'src/reader.ts')}, outdir: path.join(root,'dist/browser'),
     bundle: true, splitting: true, format: 'esm', platform: 'browser', target: 'es2022',
     minify: true, legalComments: 'linked', metafile: true,
 })
@@ -23,6 +23,7 @@ fs.cpSync(path.join(root,'assets/signature-fonts'),path.join(root,'dist/browser/
 const wasm=require.resolve('@embedpdf/pdfium/pdfium.wasm')
 fs.copyFileSync(wasm,path.join(root,'dist/pdfium.wasm'))
 fs.copyFileSync(path.join(root,'assets/redaction-font/regular.ttf'),path.join(root,'dist/redaction-regular.ttf'))
+fs.copyFileSync(path.join(root,'assets/pdf-reader.css'),path.join(root,'dist/reader.css'))
 fs.cpSync(path.join(root,'examples/assets'),path.join(root,'dist/samples'),{recursive:true})
 fs.mkdirSync(path.join(root,'licenses'),{recursive:true})
 for (const name of ['@heroui/styles', '@heroui/react', 'react', 'react-dom', 'react-aria', 'react-aria-components']) {

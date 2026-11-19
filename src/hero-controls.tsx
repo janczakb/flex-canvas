@@ -5,6 +5,8 @@ import { ColorSwatch } from '@heroui/react/color-swatch'
 import { ColorSwatchPicker } from '@heroui/react/color-swatch-picker'
 import { Dropdown } from '@heroui/react/dropdown'
 import {TextArea} from '@heroui/react/textarea'
+import {SearchField} from '@heroui/react/search-field'
+import {InputGroup} from '@heroui/react/input-group'
 import { Input } from '@heroui/react/input'
 import { ListBox } from '@heroui/react/list-box'
 import { Select } from '@heroui/react/select'
@@ -130,6 +132,34 @@ function ToolbarInput({properties}:{properties:ComponentProps<typeof Input>}){
     }}/>
 }
 
+interface DocumentSearchProps {
+    query:string;count:string;pending:boolean;hasResults:boolean
+    label:string;clearLabel:string;nextLabel:string;previousLabel:string
+    inputRef:(node:HTMLInputElement|null)=>void
+    onChange:(query:string)=>void;onNavigate:(direction:1|-1)=>void;onClose:()=>void
+}
+function DocumentSearch(props:DocumentSearchProps){
+    const arrow=(up:boolean)=><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={up?'M17.9998 15C17.9998 15 13.5809 9.00001 11.9998 9C10.4187 8.99999 5.99985 15 5.99985 15':'M18 9.00005C18 9.00005 13.5811 15 12 15C10.4188 15 6 9 6 9'}/></svg>
+    return <div className="fm-document-find" role="search" aria-label={props.label} onKeyDownCapture={event=>{
+        event.stopPropagation()
+        if(event.key==='Escape'){event.preventDefault();props.onClose()}
+        else if(event.key==='Enter'){event.preventDefault();if(!props.pending)props.onNavigate(event.shiftKey?-1:1)}
+    }}>
+        <SearchField className="fm-document-find-field" aria-label={props.label} fullWidth variant="secondary" value={props.query} onChange={props.onChange}>
+            <InputGroup variant="secondary">
+                <InputGroup.Prefix><Icon name="search"/></InputGroup.Prefix>
+                <InputGroup.Input ref={props.inputRef} type="text" role="searchbox" placeholder={props.label}/>
+                <InputGroup.Suffix>
+                    <output className="fm-search-results" role="status" aria-live="polite" aria-atomic="true" aria-busy={props.pending}>{props.count}</output>
+                    {props.query&&<SearchField.ClearButton aria-label={props.clearLabel}/>}
+                </InputGroup.Suffix>
+            </InputGroup>
+        </SearchField>
+        <Button className="fm-tool fm-document-find-navigation" size="sm" variant="ghost" isIconOnly aria-label={props.nextLabel} isDisabled={props.pending||!props.hasResults} onPress={()=>props.onNavigate(1)}>{arrow(false)}</Button>
+        <Button className="fm-tool fm-document-find-navigation" size="sm" variant="ghost" isIconOnly aria-label={props.previousLabel} isDisabled={props.pending||!props.hasResults} onPress={()=>props.onNavigate(-1)}>{arrow(true)}</Button>
+    </div>
+}
+
 export function createHeroControls(viewer: HTMLElement) {
     enableShadowDOM()
     const doc = viewer.ownerDocument
@@ -176,6 +206,7 @@ export function createHeroControls(viewer: HTMLElement) {
         },
         release(slot:HTMLElement){portals.delete(slot);if(!disposed)flushSync(()=>root.render(content()))},
         removeSlots(slots:readonly HTMLElement[]){for(const slot of slots)portals.delete(slot);this.update()},
+        documentSearch(slot:HTMLElement,props:()=>DocumentSearchProps){register(slot,()=> <DocumentSearch {...props()}/>)},
         input(slot: HTMLElement, props: () => ComponentProps<typeof Input>) {
             register(slot, () => <ToolbarInput properties={props()} />)
         },

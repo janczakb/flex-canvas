@@ -11,6 +11,8 @@ export interface PDFPageScene {
 interface FlowOptions {
     document:IndependentPDFDocument;viewport:HTMLElement;signal:AbortSignal
     paint(scene:PDFPageScene):void;activate(scene:PDFPageScene):void;current():number
+    onPageProgress?:(pageIndex:number,ready:boolean)=>void
+    overlay?:boolean
     zoom?:ViewerZoom
     pageLayout?:PDFPageLayout;firstPageSingle?:boolean;scrollMode?:PDFScrollMode
     pinned():boolean;error(error:unknown):void
@@ -26,9 +28,10 @@ export async function createPDFPageFlow(options:FlowOptions){
     let spreadPlan=createPDFSpreads([],options.pageLayout??'single',options.firstPageSingle??true)
     const paginated=options.scrollMode==='paginated'
     dimensions?.forEach((size,pageIndex)=>infos.set(pageIndex,{...size,pageIndex,rotation:0}))
-    const pages=new Map<number,{scene:PDFPageScene;controller:AbortController;surface:ReturnType<typeof createPDFTileSurface>;ready:boolean;key:string}>()
+    const pages=new Map<number,{scene:PDFPageScene;controller:AbortController;renderController?:AbortController;surface:ReturnType<typeof createPDFTileSurface>;ready:boolean;key:string;textKey:string}>()
     const cache=createPDFTileCache(),gap=24,maxMounted=8,zoomState=options.zoom??createViewerZoom()
     let width=0,height=0,fitScale=1,reference=options.current(),zoomKey='',frame=0,disposed=false,revision=0,rendering=false,pending=false,scrollRevision=0,previewing=false
+    let textTimer:ReturnType<typeof setTimeout>|undefined,textTask:AbortController|undefined
     const waiters:Array<{resolve:()=>void;reject:(error:unknown)=>void}>=[]
     viewport.append(holder)
     function geometry(){
@@ -75,7 +78,7 @@ export async function createPDFPageFlow(options:FlowOptions){
         holder.insertBefore(stage,next??null)
         const controller=new AbortController(),scene={index,stage,source,text,overlay,links,tiles,width:1,height:1,scale:1}
         const surface=createPDFTileSurface(tiles,viewport,controller.signal,options.error,cache)
-        const item={scene,controller,surface,ready:false,key:''};pages.set(index,item);return item
+        const item:{scene:PDFPageScene;controller:AbortController;renderController?:AbortController;surface:ReturnType<typeof createPDFTileSurface>;ready:boolean;key:string;textKey:string}={scene,controller,surface,ready:false,key:'',textKey:''};pages.set(index,item);return item
     }
     function position(item:ReturnType<typeof create>){
         const {scene}=item,info=infos.get(scene.index)??first
@@ -93,25 +96,51 @@ export async function createPDFPageFlow(options:FlowOptions){
         }
         position(item)
         const key=scene.scale+':'+(view.devicePixelRatio||1)
+        const inView=tops[index]<viewport.scrollTop+viewport.clientHeight&&tops[index]+heights[index]>viewport.scrollTop
         if(key===item.key)return
         if(!item.ready)scene.stage.dataset.loading='true'
-        const inView=tops[index]<viewport.scrollTop+viewport.clientHeight&&tops[index]+heights[index]>viewport.scrollTop
-        const scratch=owner.createElement('canvas')
+        if(inView)options.onPageProgress?.(index,false)
+        const scratch=owner.createElement('canvas'),renderController=new AbortController()
+        item.renderController?.abort();item.renderController=renderController
+        const stop=()=>renderController.abort();controller.signal.addEventListener('abort',stop,{once:true})
         try{
-            await pdf.renderPage(index,scratch,{scale:scene.scale,pixelRatio:Math.min(1,640/Math.max(scene.width,scene.height)),signal:controller.signal,priority:inView?'foreground':'background'})
-            if(disposed||controller.signal.aborted||version!==revision)return
+            await pdf.renderPage(index,scratch,{scale:scene.scale,pixelRatio:Math.min(1,640/Math.max(scene.width,scene.height)),signal:renderController.signal,priority:inView?'foreground':'background'})
+            if(disposed||controller.signal.aborted||renderController.signal.aborted||version!==revision)return
             scene.source.width=scratch.width;scene.source.height=scratch.height
             scene.source.getContext('2d')?.drawImage(scratch,0,0)
-        }finally{pdf.releasePage(scratch)}
-        await pdf.renderTextLayer(index,scene.text,scene.scale)
-        if(disposed||controller.signal.aborted||version!==revision)return
+        }catch(error){if(renderController.signal.aborted)return;throw error}
+        finally{controller.signal.removeEventListener('abort',stop);if(item.renderController===renderController)item.renderController=undefined;pdf.releasePage(scratch)}
         const ratio=Math.min(view.devicePixelRatio||1,2048/scene.width,2048/scene.height,Math.sqrt(1048576/(scene.width*scene.height)))
-        scene.overlay.width=Math.max(1,Math.round(scene.width*ratio));scene.overlay.height=Math.max(1,Math.round(scene.height*ratio))
+        scene.overlay.width=options.overlay===false?1:Math.max(1,Math.round(scene.width*ratio));scene.overlay.height=options.overlay===false?1:Math.max(1,Math.round(scene.height*ratio))
         scene.stage.removeAttribute('data-loading');item.ready=true;item.key=key
         item.surface.show({document:pdf,index,width:scene.width,height:scene.height,dpr:Math.min(4,view.devicePixelRatio||1)})
+        if(inView)options.onPageProgress?.(index,true)
         options.paint(scene)
         if(index===options.current())options.activate(scene)
     }
+    function cancelText(){clearTimeout(textTimer);textTask?.abort();textTask=undefined}
+    function scheduleText(){
+        clearTimeout(textTimer)
+        textTimer=setTimeout(()=>{void prepareText().catch(error=>{if(!disposed&&(error as Error)?.name!=='AbortError')options.error(error)})},180)
+    }
+    async function prepareText(){
+        if(disposed||previewing||options.pinned())return
+        textTask?.abort();const task=new AbortController();textTask=task
+        const version=revision,top=viewport.scrollTop,bottom=top+viewport.clientHeight
+        const visible=[...pages.values()].filter(item=>item.ready&&tops[item.scene.index]<bottom&&tops[item.scene.index]+heights[item.scene.index]>top)
+            .sort((a,b)=>Math.abs(tops[a.scene.index]+heights[a.scene.index]/2-(top+bottom)/2)-Math.abs(tops[b.scene.index]+heights[b.scene.index]/2-(top+bottom)/2)).slice(0,2)
+        if(!options.pinned())for(const item of pages.values())if(!visible.includes(item)){pdf.clearTextLayer(item.scene.text);item.textKey=''}
+        for(const item of visible){
+            if(disposed||task.signal.aborted||version!==revision)return
+            if(item.textKey===item.key)continue
+            const stop=()=>task.abort();item.controller.signal.addEventListener('abort',stop,{once:true})
+            try{
+                await pdf.renderTextLayer(item.scene.index,item.scene.text,item.scene.scale,task.signal)
+                if(!disposed&&!task.signal.aborted&&version===revision){item.textKey=item.key;item.scene.text.style.visibility=''}
+            }finally{item.controller.signal.removeEventListener('abort',stop)}
+        }
+    }
+
     async function draw(){
         if(disposed||previewing)return
         if(rendering){pending=true;return new Promise<void>((resolve,reject)=>waiters.push({resolve,reject}))}
@@ -124,9 +153,12 @@ export async function createPDFPageFlow(options:FlowOptions){
             const wanted=new Set<number>()
             // Keep active pointer/text surfaces attached until their gesture finishes.
             if(options.pinned())for(const index of pages.keys())wanted.add(index)
-            for(let row=firstRow;row<=lastRow&&wanted.size<maxMounted;row++)for(const index of spreadPlan.spreads[row].pages)if(wanted.size<maxMounted)wanted.add(index)
-            for(const index of pages.keys())if(!wanted.has(index))release(index)
+            const candidates:number[]=[]
+            for(let row=firstRow;row<=lastRow;row++)candidates.push(...spreadPlan.spreads[row].pages)
             const visible=(index:number)=>tops[index]<bottom&&tops[index]+heights[index]>top
+            candidates.sort((a,b)=>Number(visible(b))-Number(visible(a))||Math.abs(tops[a]+heights[a]/2-(top+bottom)/2)-Math.abs(tops[b]+heights[b]/2-(top+bottom)/2))
+            for(const index of candidates)if(wanted.size<maxMounted)wanted.add(index)
+            for(const index of pages.keys())if(!wanted.has(index))release(index)
             const order=[...wanted].sort((a,b)=>Number(visible(b))-Number(visible(a))||Math.abs(tops[a]+heights[a]/2-(top+bottom)/2)-Math.abs(tops[b]+heights[b]/2-(top+bottom)/2))
             for(const index of order){
                 if(disposed)break
@@ -139,18 +171,18 @@ export async function createPDFPageFlow(options:FlowOptions){
                 if(item?.ready)options.activate(item.scene)
             }
         }catch(error){if(!disposed&&(error as Error)?.name!=='AbortError'){for(const waiter of waiters.splice(0))waiter.reject(error);throw error}}
-        finally{rendering=false;if(pending&&!disposed){pending=false;request()}else for(const waiter of waiters.splice(0))waiter.resolve()}
+        finally{if(!disposed)scheduleText();rendering=false;if(pending&&!disposed){pending=false;request()}else for(const waiter of waiters.splice(0))waiter.resolve()}
     }
     function request(){if(!disposed&&!frame)frame=view.requestAnimationFrame(()=>{frame=0;void draw().catch(options.error)})}
     function destroy(){
         if(disposed)return
-        disposed=true;view.cancelAnimationFrame(frame);viewport.removeEventListener('scroll',onScroll)
+        disposed=true;cancelText();view.cancelAnimationFrame(frame);viewport.removeEventListener('scroll',onScroll)
         signal.removeEventListener('abort',destroy)
         for(const index of pages.keys())release(index)
         cache.clear();holder.remove();for(const waiter of waiters.splice(0))waiter.resolve()
     }
     function onScroll(){
-        scrollRevision++
+        scrollRevision++;cancelText();scheduleText()
         if(!options.pinned())for(const index of pages.keys())if(tops[index]+heights[index]<viewport.scrollTop-viewport.clientHeight||tops[index]>viewport.scrollTop+viewport.clientHeight*2)release(index)
         request()
     }
@@ -162,6 +194,7 @@ export async function createPDFPageFlow(options:FlowOptions){
             previewing=previewOnly
             const anchor=indexAt(viewport.scrollTop),fraction=(viewport.scrollTop-tops[anchor])/heights[anchor]
             if(zoomKey!==zoomState.mode+':'+zoomState.level||width!==Math.max(24,viewport.clientWidth-48)||height!==Math.max(24,viewport.clientHeight-48)){
+                cancelText();for(const item of pages.values()){item.renderController?.abort();item.scene.text.style.visibility='hidden'}
                 revision++;zoomKey=zoomState.mode+':'+zoomState.level;geometry()
                 for(const item of pages.values())position(item)
                 viewport.scrollTop=tops[anchor]+fraction*heights[anchor]
@@ -171,7 +204,7 @@ export async function createPDFPageFlow(options:FlowOptions){
         },
         async goTo(index:number){
             if(disposed)return
-            if(reference!==index){reference=index;revision++;geometry();for(const item of pages.values())position(item)}
+            if(reference!==index){for(const item of pages.values())item.renderController?.abort();reference=index;revision++;geometry();for(const item of pages.values())position(item)}
             viewport.scrollTop=paginated?0:Math.max(0,rowTops[spreadPlan.pageRows[index]]-gap);await draw()
             const item=pages.get(index);if(item?.ready)options.activate(item.scene)
         },

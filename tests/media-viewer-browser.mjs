@@ -22,11 +22,12 @@ await page.addInitScript(() => {
     const OriginalWorker = window.Worker
     window.workerProof = {created:0,terminated:0,active:0,maxActive:0,renders:0,tiles:0}
     window.Worker = class extends OriginalWorker {
-        constructor(...args) { super(...args);window.workerProof.created++;this.addEventListener('message',()=>{window.workerProof.active--}) }
+        constructor(...args) { super(...args);window.workerProof.created++;this.addEventListener('message',event=>{if(!event.data.event)window.workerProof.active--}) }
         postMessage(message,...args) {
+            if(message.method==='cancel')return super.postMessage(message,...args)
             window.workerProof.active++;window.workerProof.maxActive=Math.max(window.workerProof.maxActive,window.workerProof.active)
-            if(message.method==='render')window.workerProof.renders++
-            if(message.method==='renderTile')window.workerProof.tiles++
+            if(['render','renderBitmap'].includes(message.method))window.workerProof.renders++
+            if(['renderTile','renderTileBitmap'].includes(message.method))window.workerProof.tiles++
             return super.postMessage(message,...args)
         }
         terminate(){window.workerProof.terminated++;super.terminate()}
