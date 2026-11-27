@@ -105,6 +105,36 @@ try{
     await page.setViewportSize({width:1440,height:940})
     await menuTrigger.click();await menu.waitFor()
     await page.waitForFunction(()=>{const menu=window.exampleViewer().element.shadowRoot.querySelector('[data-slot=dropdown-popover]');return menu&&getComputedStyle(menu).opacity==='1'&&!menu.hasAttribute('data-entering')})
+    // Press feedback must never move the anchor of an opening or closing menu.
+    const anchorBefore=await menuTrigger.boundingBox()
+    await menuTrigger.hover();await page.mouse.down()
+    assert.equal(await menuTrigger.evaluate(node=>getComputedStyle(node).transform),'none')
+    assert.deepEqual(await menuTrigger.boundingBox(),anchorBefore)
+    await page.mouse.up();await closed()
+    await menuTrigger.click();await menu.waitFor()
+    await page.waitForFunction(()=>{const menu=window.exampleViewer().element.shadowRoot.querySelector('[data-slot=dropdown-popover]');return menu&&!menu.hasAttribute('data-entering')})
+    await page.evaluate(()=>{
+        window.menuExitFrames=[]
+        const end=performance.now()+1500
+        const sample=()=>{
+            const node=window.exampleViewer().element.shadowRoot.querySelector('[data-slot=dropdown-popover]')
+            if(!node){window.menuExitFinished=true;return}
+            const box=node.getBoundingClientRect(),style=getComputedStyle(node)
+            window.menuExitFrames.push({x:box.x,y:box.y,opacity:Number(style.opacity)})
+            if(performance.now()<end)requestAnimationFrame(sample)
+        }
+        requestAnimationFrame(sample)
+    })
+    await menuTrigger.click();await closed()
+    await page.waitForFunction(()=>window.menuExitFinished)
+    const exitFrames=await page.evaluate(()=>window.menuExitFrames)
+    assert(exitFrames.length>2,'Exit animation remains mounted across frames')
+    for(let index=1;index<exitFrames.length;index++){
+        assert(Math.abs(exitFrames[index].x-exitFrames[0].x)<.1,'No horizontal jump on dismissal')
+        assert(Math.abs(exitFrames[index].y-exitFrames[0].y)<.1,'No vertical jump on dismissal')
+        assert(exitFrames[index].opacity<=exitFrames[index-1].opacity+.001,'No reappearing frame on dismissal')
+    }
+    await menuTrigger.click();await menu.waitFor()
     await mkdir('.internal/previews',{recursive:true})
     await page.screenshot({path:'.internal/previews/toolbar-feedback.png',clip:{x:0,y:0,width:1440,height:380}})
     await page.evaluate(()=>window.exampleViewer().destroy())

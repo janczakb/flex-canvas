@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-11-28
+
+- Stabilized toolbar dropdown anchors during opening and closing animations.
+- Kept dropdowns and property popovers inside their embedded viewer boundary.
+- Fixed menu sizing and labels for entries without leading icons.
+- Started PDF initialization in parallel with toolbar and stylesheet preparation.
+- Added regression coverage for stable press bounds and monotonic dropdown dismissal.
+
 ## 0.2.0 — 2026-11-19
 
 - Added a standalone PDF reader entry with its own stylesheet and host controls.

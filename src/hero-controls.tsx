@@ -56,7 +56,7 @@ function ToolbarMenu({ label, icon, entries }: {label: string; icon: string; ent
                 <Button {...dismissal} ref={trigger} className="fm-tool" aria-label={label} isIconOnly variant="ghost">
                     <Icon name={icon} />
                 </Button>
-            <Dropdown.Popover ref={popover} isNonModal placement="bottom start" className="fm-hero-popover">
+            <Dropdown.Popover ref={popover} boundaryElement={trigger.current?.closest<HTMLElement>('.fm') ?? undefined} isNonModal placement="bottom start" className="fm-hero-popover">
                 <Dropdown.Menu aria-label={label} items={items} selectionMode={selectable ? 'single' : 'none'} selectedKeys={selection}>
                     {item => (
                         <Dropdown.Item id={item.key} textValue={item.label} onAction={() => {changeOpen(false);item.action()}}>
@@ -80,7 +80,7 @@ function PalettePopover({label, choices, noColor, disabled}: {label: string; cho
         <ColorPicker.Trigger isDisabled={disabled} {...dismissal} ref={trigger} aria-label={label} data-no-color={noColor || undefined}>
             <ColorSwatch />
         </ColorPicker.Trigger>
-        <ColorPicker.Popover ref={popover} isNonModal className="fm-hero-popover">
+        <ColorPicker.Popover ref={popover} boundaryElement={trigger.current?.closest<HTMLElement>('.fm') ?? undefined} isNonModal className="fm-hero-popover">
         <ColorSwatchPicker aria-label={label}>
             {choices.map(choice => (
                 <ColorSwatchPicker.Item key={choice.key} color={choice.key === 'none' ? '#00000000' : choice.key} aria-label={choice.label} onPress={() => state.close()}>
@@ -113,7 +113,7 @@ function ToolbarSelect({ label, value, choices, onChange, disabled }: {label: st
     return (
         <Select isDisabled={disabled} isOpen={open} onOpenChange={setOpen} aria-label={label} value={value} onChange={key => {if (key != null) {setOpen(false);onChange(String(key))}}}>
             <Select.Trigger {...dismissal} ref={trigger} aria-label={label}><Select.Value /><Select.Indicator /></Select.Trigger>
-            <Select.Popover ref={popover} isNonModal placement="bottom start" className="fm-hero-popover">
+            <Select.Popover ref={popover} boundaryElement={trigger.current?.closest<HTMLElement>('.fm') ?? undefined} isNonModal placement="bottom start" className="fm-hero-popover">
                 <ListBox aria-label={label} items={choices}>
                     {choice => <ListBox.Item id={choice.key} textValue={choice.label}>{choice.label}<ListBox.ItemIndicator /></ListBox.Item>}
                 </ListBox>

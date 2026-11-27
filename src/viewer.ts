@@ -183,6 +183,14 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
     const footer=make('div','fm-bar fm-footer'),status=make('span','fm-status')
     status.setAttribute('role','status');status.textContent=text('loading');footer.append(status)
     stage.append(source,tileLayer,textLayer,overlay,links);scroller.append(stage);body.append(...(options.source.kind==='pdf'?[navigation,sidebar,scroller,loading]:[navigation,scroller,sidebar,loading]));root.append(...(options.showToolbar===false?[]:[top]),slot,body,footer);shadow.append(root);container.append(host)
+    // Fetch and initialize PDF resources alongside UI code and styles, not after them.
+    // Capture failures immediately so an aborted/failed UI preparation cannot leave
+    // an unhandled rejection; openPDF owns cleanup through the shared signal.
+    const pdfSource = options.source.kind === 'pdf' ? options.source : undefined
+    const pdfPreparation = pdfSource ? import('./pdf.js').then(async ({openPDF}) => {
+        signal.throwIfAborted()
+        return openPDF({...pdfSource.pdf,source:pdfSource.source,signal,onProgress:options.onProgress??pdfSource.pdf.onProgress})
+    }).then(document => ({document}), error => ({error})) : undefined
     const heroModule = import('./hero-controls.js')
     let hero: ReturnType<(typeof import('./hero-controls.js'))['createHeroControls']>
     try {
@@ -1517,8 +1525,9 @@ export async function mountMediaViewer(container: HTMLElement, options: MediaVie
         root.lang=locale
         for(const [node,bindings] of translationsByElement)if(node.isConnected)for(const [attribute,key] of bindings)localize(node,key,attribute)
         if(options.source.kind==='pdf'){
-            const {openPDF}=await import('./pdf.js')
-            pdf=await openPDF({...options.source.pdf,source:options.source.source,signal,onProgress:options.onProgress??options.source.pdf.onProgress});pageCount=pdf.pageCount;bookmarks=normalizeBookmarks(options.bookmarks??[],pageCount)
+            const prepared = await pdfPreparation!
+            if ('error' in prepared) throw prepared.error
+            pdf=prepared.document;pageCount=pdf.pageCount;bookmarks=normalizeBookmarks(options.bookmarks??[],pageCount)
         }else{
             image=make('img');image.alt=options.name??'';image.src=options.source.url
             await image.decode();signal.throwIfAborted();source.replaceWith(image)

@@ -87,7 +87,7 @@
 .fm-hero-menu,.fm-hero-input{flex:none}
 .fm .fm-top .fm-chevron-slot .fm-tool{width:24px;padding:4px}
 .fm-top .fm-chevron-slot svg{width:15px;height:15px}
-.fm-hero-popover{max-width:calc(100vw - 12px);min-width:140px;max-height:min(60dvh,420px)}
+.fm-hero-popover{width:max-content;max-width:calc(100vw - 24px);min-width:min(220px,calc(100vw - 24px));max-height:min(60dvh,420px)}
 .fm-hero-popover [role=menuitem],.fm-hero-popover [role=menuitemradio],.fm-hero-popover [role=option]{cursor:pointer}
 .fm-property .select__trigger,.fm-property .color-picker__trigger{min-height:32px;height:32px;box-sizing:border-box}
 .fm-property .select__trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-inline:8px;min-width:max-content;border-radius:4px;background:transparent;box-shadow:none}
@@ -201,13 +201,16 @@
 .fm .fm-note-choice,.fm .fm-note-choice-button{border-radius:6px}
 .fm-note-choice[data-selected]{border-radius:6px}
 .fm-note-glyph svg{width:24px;height:24px}
-/* Menu selection indicators occupy a real centered column, never a text baseline. */
-.fm-hero-popover [role=menuitemradio]{display:grid;grid-template-columns:24px 24px minmax(0,1fr);align-items:center;column-gap:10px;min-height:44px;padding:6px 12px}
+/* Keep the positioning anchor stable while HeroUI animates the popover.
+   Press scaling changes its measured bounds during both opening and dismissal. */
+.fm .fm-top button[data-slot=button]{transform:none}
+/* A flex row accommodates menus with and without a leading item icon. */
+.fm-hero-popover [role=menuitemradio]{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 12px}
 .fm-hero-popover [role=menuitemradio]>[data-slot=menu-item-indicator]{position:static;inset:auto;translate:none;transform:none;display:grid;place-items:center;order:-1;width:24px;height:24px;min-width:24px;margin:0;align-self:center;visibility:hidden}
 .fm-hero-popover [role=menuitemradio]>[data-slot=menu-item-indicator][data-visible]{visibility:visible}
 .fm-hero-popover [data-slot=menu-item-indicator] .fm-hero-icon{display:grid;place-items:center;width:24px;height:24px}
 .fm-hero-popover [data-slot=menu-item-indicator] svg{width:22px;height:22px}
-.fm-hero-popover .fm-menu-label{min-width:0;line-height:20px;align-self:center}
+.fm-hero-popover .fm-menu-label{flex:1;min-width:0;line-height:20px;align-self:center}
 
 /* HeroUI owns tooltip positioning, timing and animation for every toolbar trigger. */
 .fm-tooltip{--overlay:#111114;--foreground:#fff;background:#111114;color:#fff;pointer-events:none}

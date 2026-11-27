@@ -112,7 +112,7 @@ try{
     await btn('Notes and pins').click()
     await root.getByRole('menuitemradio',{name:'Numbered pin'}).click()
     await page.keyboard.press('Escape')
-    assert(await root.evaluate(e=>e.scrollWidth<=e.clientWidth+1))
+    assert(await root.evaluate(e=>e.scrollWidth<=e.clientWidth+1),await root.evaluate(e=>JSON.stringify({width:e.clientWidth,scroll:e.scrollWidth,overflow:[...e.querySelectorAll('*')].filter(node=>node.getBoundingClientRect().right>e.getBoundingClientRect().right+1).map(node=>({class:node.className,box:node.getBoundingClientRect().toJSON()})).slice(-8)})))
     await page.evaluate(()=>window.api.destroy())
     assert.equal(await page.locator('#viewer>div').count(),0)
     assert.equal(await page.locator('link[data-fm-properties]').count(),0)
